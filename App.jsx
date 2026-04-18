@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 
-const API_BASE = "http://localhost:5000";
+const API_BASE = "";
 const TEMPLATE_STORAGE_KEY = "vehicle-image-suite-template-library";
 
 const EDITOR_CANVAS = {
