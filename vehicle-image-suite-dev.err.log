@@ -1,0 +1,37 @@
+(node:26320) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+[2m13:26:36[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mThe final argument passed to useEffect changed size between renders. The order and size of this array must remain constant.
+
+Previous: [/assets/rent2buy-template.png, () => {
+		const canvas = canvasRef.current;
+		if (!canvas) return;
+		const ctx = canvas.getContext("2d");
+		canvas.width = CANVAS_SIZE;
+		canvas.height = CANVAS_SIZE;
+		ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+		ctx.fillStyle = "#111827";
+		ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+		const img = loadedImageRef.current;
+		if (img) {
+			const coverScale = Math.max(CANVAS_SIZE / img.naturalWidth, CANVAS_SIZE / img.naturalHeight);
+			const drawWidth = img.naturalWidth * coverScale * imageTransform.scale;
+			const drawHeight = img.naturalHeight * coverScale * imageTransform.scale;
+			const x = (CANVAS_SIZE - drawWidth) / 2 + imageTransform.x;
+			const y = (CANVAS_SIZE - drawHeight) / 2 + imageTransform.y;
+			ctx.drawImage(img, x, y, drawWidth, drawHeight);
+		} else {
+			ctx.fillStyle = "#1f2937";
+			ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+			ctx.fillStyle = "#94a3b8";
+			ctx.font = "700 42px Inter, Arial, sans-serif";
+			ctx.textAlign = "center";
+			ctx.fillText("Select a vehicle image", CANVAS_SIZE / 2, CANVAS_SIZE / 2);
+			ctx.textAlign = "left";
+		}
+		const overlay = templateOverlayRef.current;
+		if (overlay) {
+			ctx.drawImage(overlay, 0, 0, CANVAS_SIZE, CANVAS_SIZE);
+		}
+	}]
+Incoming: [/assets/rent2buy-template.png]
+^C
