@@ -35,7 +35,7 @@ const DEFAULT_TEMPLATES = [
 ];
 
 function getImageProxyUrl(url) {
-  return `${API_BASE}/image-proxy?url=${encodeURIComponent(url)}`;
+  return `/api/image?url=${encodeURIComponent(url)}`;
 }
 
 function clamp(value, min, max) {
@@ -414,12 +414,12 @@ function App() {
     }
   };
 
-  const downloadZip = () => {
-    if (!images.length) return;
-    const zipUrl = `${API_BASE}/download-zip?urls=${encodeURIComponent(JSON.stringify(images))}`;
-    window.open(zipUrl, "_blank", "noopener,noreferrer");
-  };
-
+const downloadZip = () => {
+  if (!images.length) return;
+  const zipUrl = `/api/download-zip?urls=${encodeURIComponent(JSON.stringify(images))}`;
+  window.open(zipUrl, "_blank", "noopener,noreferrer");
+};
+  
   const replaceTemplateFile = async (templateId, file) => {
     if (!file) return;
     if (file.type && file.type !== "image/png") {
