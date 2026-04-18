@@ -397,7 +397,7 @@ function App() {
     setStatus("Extracting full-size vehicle images...");
 
     try {
-      const response = await fetch(`${API_BASE}/extract?url=${encodeURIComponent(url.trim())}`);
+      const response = await fetch(`/api/extract?url=${encodeURIComponent(url.trim())}`);
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Image extraction failed.");
 
