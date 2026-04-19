@@ -13,18 +13,26 @@ export default async function handler(req, res) {
       ...html.matchAll(/https:\/\/[^"'\\s>]+?\.(jpg|jpeg|png)(\?[^"'\\s>]*)?/gi),
     ];
 
-    const rawImages = matches.map((match) => match[0].replace(/\\\//g, "/"));
+    const rawImages = matches.map((m) => m[0].replace(/\\\//g, "/"));
 
-    const counts = {};
+    const images = [];
+    const seen = new Set();
+
     for (const imageUrl of rawImages) {
-      counts[imageUrl] = (counts[imageUrl] || 0) + 1;
+      const lower = imageUrl.toLowerCase();
+
+      // ✅ ONLY KEEP LARGE IMAGES
+      if (!lower.includes("-large")) continue;
+
+      // remove duplicates
+      const key = imageUrl.split("?")[0];
+      if (seen.has(key)) continue;
+
+      seen.add(key);
+      images.push(imageUrl);
     }
 
-    return res.status(200).json({
-      total: rawImages.length,
-      unique: Object.keys(counts).length,
-      images: Object.keys(counts).slice(0, 120),
-    });
+    return res.status(200).json({ images });
   } catch (err) {
     return res.status(500).json({
       error: "Extraction failed",
