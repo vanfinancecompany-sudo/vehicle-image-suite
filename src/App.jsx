@@ -495,9 +495,19 @@ function App() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Image extraction failed.");
 
-      const rawImages = Array.isArray(data.images) ? data.images : [];
-      const extractedImages = dedupeImageUrls(rawImages);
-      const duplicateCount = rawImages.length - extractedImages.length;
+     const rawImages = Array.isArray(data.images) ? data.images : [];
+
+console.log("RAW IMAGES", rawImages);
+console.log(
+  "RAW IMAGE DEBUG",
+  rawImages.map((url) => ({
+    original: url,
+    dedupeKeys: getImageDedupeKeys(url),
+  }))
+);
+
+const extractedImages = dedupeImageUrls(rawImages);
+const duplicateCount = rawImages.length - extractedImages.length;
 
       setImages(extractedImages);
       setSelectedImage(extractedImages[0] || "");
