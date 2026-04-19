@@ -278,9 +278,12 @@ function downloadBlob(blob, filename) {
   URL.revokeObjectURL(objectUrl);
 }
 
-function normalizeImageUrl(value) {
+function getImageDedupeKeys(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return [];
+
   try {
-    const parsed = new URL(String(value || "").trim());
+    const parsed = new URL(raw);
     parsed.hash = "";
 
     const removableParams = [
@@ -295,14 +298,30 @@ function normalizeImageUrl(value) {
       "auto",
       "dpr",
       "fm",
+      "ixlib",
+      "ts",
+      "v",
     ];
 
     removableParams.forEach((param) => parsed.searchParams.delete(param));
 
-    return parsed.toString();
+    const pathname = parsed.pathname.toLowerCase();
+    const filename = pathname.split("/").filter(Boolean).pop() || pathname;
+
+    return [
+      parsed.toString().toLowerCase(),
+      pathname,
+      filename,
+    ].filter(Boolean);
   } catch {
-    return String(value || "").trim();
+    const cleaned = raw.toLowerCase().split("#")[0].split("?")[0];
+    const filename = cleaned.split("/").filter(Boolean).pop() || cleaned;
+    return [cleaned, filename].filter(Boolean);
   }
+}
+
+function normalizeImageUrl(value) {
+  return getImageDedupeKeys(value)[0] || String(value || "").trim();
 }
 
 function dedupeImageUrls(imageUrls) {
@@ -310,9 +329,12 @@ function dedupeImageUrls(imageUrls) {
   const seen = new Set();
 
   for (const imageUrl of imageUrls) {
-    const normalized = normalizeImageUrl(imageUrl);
-    if (!normalized || seen.has(normalized)) continue;
-    seen.add(normalized);
+    const keys = getImageDedupeKeys(imageUrl);
+    const isDuplicate = keys.some((key) => seen.has(key));
+
+    if (isDuplicate) continue;
+
+    keys.forEach((key) => seen.add(key));
     uniqueImages.push(imageUrl);
   }
 
