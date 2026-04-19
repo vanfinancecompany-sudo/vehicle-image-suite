@@ -278,67 +278,8 @@ function downloadBlob(blob, filename) {
   URL.revokeObjectURL(objectUrl);
 }
 
-function getImageDedupeKeys(value) {
-  const raw = String(value || "").trim();
-  if (!raw) return [];
-
-  try {
-    const parsed = new URL(raw);
-    parsed.hash = "";
-
-    const removableParams = [
-      "w",
-      "h",
-      "width",
-      "height",
-      "quality",
-      "q",
-      "fit",
-      "crop",
-      "auto",
-      "dpr",
-      "fm",
-      "ixlib",
-      "ts",
-      "v",
-    ];
-
-    removableParams.forEach((param) => parsed.searchParams.delete(param));
-
-    const pathname = parsed.pathname.toLowerCase();
-    const filename = pathname.split("/").filter(Boolean).pop() || pathname;
-
-    return [
-      parsed.toString().toLowerCase(),
-      pathname,
-      filename,
-    ].filter(Boolean);
-  } catch {
-    const cleaned = raw.toLowerCase().split("#")[0].split("?")[0];
-    const filename = cleaned.split("/").filter(Boolean).pop() || cleaned;
-    return [cleaned, filename].filter(Boolean);
-  }
-}
-
 function normalizeImageUrl(value) {
-  return getImageDedupeKeys(value)[0] || String(value || "").trim();
-}
-
-function dedupeImageUrls(imageUrls) {
-  const uniqueImages = [];
-  const seen = new Set();
-
-  for (const imageUrl of imageUrls) {
-    const keys = getImageDedupeKeys(imageUrl);
-    const isDuplicate = keys.some((key) => seen.has(key));
-
-    if (isDuplicate) continue;
-
-    keys.forEach((key) => seen.add(key));
-    uniqueImages.push(imageUrl);
-  }
-
-  return uniqueImages;
+  return String(value || "").trim().toLowerCase();
 }
 
 function App() {
@@ -458,7 +399,8 @@ function App() {
 
   const deleteImage = (imageUrlToDelete) => {
     setImages((currentImages) => {
-      const nextImages = currentImages.filter((imageUrl) => imageUrl !== imageUrlToDelete);
+      const indexToDelete = currentImages.findIndex((imageUrl) => imageUrl === imageUrlToDelete);
+      const nextImages = currentImages.filter((_, index) => index !== indexToDelete);
 
       setSelectedImage((currentSelected) => {
         if (currentSelected !== imageUrlToDelete) return currentSelected;
@@ -495,47 +437,15 @@ function App() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Image extraction failed.");
 
-     const rawImages = Array.isArray(data.images) ? data.images : [];
-
-const filteredImages = rawImages.filter((url) => {
-  const lower = String(url).toLowerCase();
-
-  return (
-    !lower.includes("logo") &&
-    !lower.includes("icon") &&
-    !lower.includes("badge") &&
-    !lower.includes("placeholder") &&
-    !lower.includes("spinner") &&
-    !lower.includes("brand") &&
-    !lower.includes(".svg")
-  );
-});
-
-console.log("RAW IMAGES", rawImages);
-console.log(
-  "RAW IMAGE DEBUG",
-  rawImages.map((url) => ({
-    original: url,
-    dedupeKeys: getImageDedupeKeys(url),
-  }))
-);
-
-const extractedImages = dedupeImageUrls(filteredImages);
-const duplicateCount = filteredImages.length - extractedImages.length;
-
+      const extractedImages = Array.isArray(data.images) ? data.images : [];
       setImages(extractedImages);
       setSelectedImage(extractedImages[0] || "");
       setImageTransform({ x: 0, y: 0, scale: 1 });
-
-      if (!extractedImages.length) {
-        setStatus("No images found on that page.");
-      } else if (duplicateCount > 0) {
-        setStatus(
-          `Found ${extractedImages.length} unique full-size images. Removed ${duplicateCount} duplicate${duplicateCount === 1 ? "" : "s"}. Image 1 selected.`
-        );
-      } else {
-        setStatus(`Found ${extractedImages.length} full-size images. Image 1 selected.`);
-      }
+      setStatus(
+        extractedImages.length
+          ? `Found ${extractedImages.length} full-size images. Image 1 selected.`
+          : "No images found on that page."
+      );
     } catch (extractError) {
       setError(extractError.message || "Image extraction failed.");
       setStatus("Extraction failed.");
