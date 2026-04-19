@@ -9,42 +9,16 @@ export default async function handler(req, res) {
     const response = await fetch(url);
     const html = await response.text();
 
-    const matches = [...html.matchAll(/https:\/\/[^"'\\s>]+\.(jpg|jpeg|png)(\?[^"'\\s>]*)?/gi)];
+    const matches = [
+      ...html.matchAll(/https:\/\/[^"'\\s>]+?\.(jpg|jpeg|png)(\?[^"'\\s>]*)?/gi),
+    ];
+
     const rawImages = matches.map((match) => match[0]);
-
-    const normalizeImageUrl = (value) => {
-      try {
-        const parsed = new URL(value);
-        parsed.hash = "";
-
-        const removableParams = [
-          "w",
-          "h",
-          "width",
-          "height",
-          "quality",
-          "q",
-          "fit",
-          "crop",
-          "auto",
-          "dpr",
-          "fm",
-          "ixlib",
-          "ts",
-          "v",
-        ];
-
-        removableParams.forEach((param) => parsed.searchParams.delete(param));
-        return parsed.toString();
-      } catch {
-        return String(value || "").trim();
-      }
-    };
 
     const isLikelyVehicleImage = (value) => {
       const lower = String(value || "").toLowerCase();
 
-      if (
+      return !(
         lower.includes("logo") ||
         lower.includes("icon") ||
         lower.includes("badge") ||
@@ -53,11 +27,21 @@ export default async function handler(req, res) {
         lower.includes("brand") ||
         lower.includes("thumb") ||
         lower.includes("thumbnail")
-      ) {
-        return false;
-      }
+      );
+    };
 
-      return true;
+    const getDedupeKey = (value) => {
+      try {
+        const cleaned = String(value || "").replace(/\\\//g, "/").trim();
+        const parsed = new URL(cleaned);
+        return `${parsed.origin}${parsed.pathname}`.toLowerCase();
+      } catch {
+        return String(value || "")
+          .replace(/\\\//g, "/")
+          .split("?")[0]
+          .trim()
+          .toLowerCase();
+      }
     };
 
     const images = [];
@@ -66,11 +50,11 @@ export default async function handler(req, res) {
     for (const imageUrl of rawImages) {
       if (!isLikelyVehicleImage(imageUrl)) continue;
 
-      const normalized = normalizeImageUrl(imageUrl);
-      if (!normalized || seen.has(normalized)) continue;
+      const key = getDedupeKey(imageUrl);
+      if (!key || seen.has(key)) continue;
 
-      seen.add(normalized);
-      images.push(imageUrl);
+      seen.add(key);
+      images.push(imageUrl.replace(/\\\//g, "/"));
     }
 
     return res.status(200).json({ images });
