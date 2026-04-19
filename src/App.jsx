@@ -104,7 +104,9 @@ function loadTemplateLibrary() {
     if (!Array.isArray(stored)) return DEFAULT_TEMPLATES;
 
     const storedById = new Map(stored.map((template) => [template.id, template]));
-    const defaultTemplates = DEFAULT_TEMPLATES.map((template) => normalizeTemplate({ ...template, ...(storedById.get(template.id) || {}) }));
+    const defaultTemplates = DEFAULT_TEMPLATES.map((template) =>
+      normalizeTemplate({ ...template, ...(storedById.get(template.id) || {}) })
+    );
     const customTemplates = stored
       .filter((template) => !DEFAULT_TEMPLATES.some((defaultTemplate) => defaultTemplate.id === template.id))
       .map(normalizeTemplate);
@@ -276,12 +278,55 @@ function downloadBlob(blob, filename) {
   URL.revokeObjectURL(objectUrl);
 }
 
+function normalizeImageUrl(value) {
+  try {
+    const parsed = new URL(String(value || "").trim());
+    parsed.hash = "";
+
+    const removableParams = [
+      "w",
+      "h",
+      "width",
+      "height",
+      "quality",
+      "q",
+      "fit",
+      "crop",
+      "auto",
+      "dpr",
+      "fm",
+    ];
+
+    removableParams.forEach((param) => parsed.searchParams.delete(param));
+
+    return parsed.toString();
+  } catch {
+    return String(value || "").trim();
+  }
+}
+
+function dedupeImageUrls(imageUrls) {
+  const uniqueImages = [];
+  const seen = new Set();
+
+  for (const imageUrl of imageUrls) {
+    const normalized = normalizeImageUrl(imageUrl);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    uniqueImages.push(imageUrl);
+  }
+
+  return uniqueImages;
+}
+
 function App() {
   const [url, setUrl] = useState("");
   const [images, setImages] = useState([]);
   const [selectedImage, setSelectedImage] = useState("");
   const [templates, setTemplates] = useState(loadTemplateLibrary);
-  const [activeTemplateId, setActiveTemplateId] = useState(() => DEFAULT_TEMPLATES.find((template) => template.isDefault)?.id || DEFAULT_TEMPLATES[0].id);
+  const [activeTemplateId, setActiveTemplateId] = useState(
+    () => DEFAULT_TEMPLATES.find((template) => template.isDefault)?.id || DEFAULT_TEMPLATES[0].id
+  );
   const [newTemplateName, setNewTemplateName] = useState("");
   const [newTemplateFile, setNewTemplateFile] = useState(null);
   const [imageTransform, setImageTransform] = useState({ x: 0, y: 0, scale: 1 });
@@ -301,7 +346,10 @@ function App() {
     [activeTemplateId, templates]
   );
 
-  const selectedImageIndex = useMemo(() => images.findIndex((imageUrl) => imageUrl === selectedImage), [images, selectedImage]);
+  const selectedImageIndex = useMemo(
+    () => images.findIndex((imageUrl) => imageUrl === selectedImage),
+    [images, selectedImage]
+  );
 
   useEffect(() => {
     try {
@@ -341,7 +389,7 @@ function App() {
     return () => {
       isCancelled = true;
     };
-  }, [activeTemplate?.filePath]);
+  }, [activeTemplate?.filePath, drawCanvas, activeTemplate]);
 
   useEffect(() => {
     if (!selectedImage) {
@@ -367,7 +415,7 @@ function App() {
     return () => {
       isCancelled = true;
     };
-  }, [selectedImage]);
+  }, [selectedImage, drawCanvas]);
 
   useEffect(() => {
     drawCanvas();
@@ -386,6 +434,30 @@ function App() {
     selectImage(images[nextIndex]);
   };
 
+  const deleteImage = (imageUrlToDelete) => {
+    setImages((currentImages) => {
+      const nextImages = currentImages.filter((imageUrl) => imageUrl !== imageUrlToDelete);
+
+      setSelectedImage((currentSelected) => {
+        if (currentSelected !== imageUrlToDelete) return currentSelected;
+        return nextImages[0] || "";
+      });
+
+      if (selectedImage === imageUrlToDelete) {
+        setImageTransform({ x: 0, y: 0, scale: 1 });
+      }
+
+      setStatus(
+        nextImages.length
+          ? `Removed image. ${nextImages.length} image${nextImages.length === 1 ? "" : "s"} remaining.`
+          : "All extracted images removed."
+      );
+
+      setError("");
+      return nextImages;
+    });
+  };
+
   const extractImages = async () => {
     if (!url.trim()) {
       setError("Paste a Vansco vehicle page URL first.");
@@ -401,11 +473,23 @@ function App() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Image extraction failed.");
 
-      const extractedImages = data.images || [];
+      const rawImages = Array.isArray(data.images) ? data.images : [];
+      const extractedImages = dedupeImageUrls(rawImages);
+      const duplicateCount = rawImages.length - extractedImages.length;
+
       setImages(extractedImages);
       setSelectedImage(extractedImages[0] || "");
       setImageTransform({ x: 0, y: 0, scale: 1 });
-      setStatus(extractedImages.length ? `Found ${extractedImages.length} full-size images. Image 1 selected.` : "No images found on that page.");
+
+      if (!extractedImages.length) {
+        setStatus("No images found on that page.");
+      } else if (duplicateCount > 0) {
+        setStatus(
+          `Found ${extractedImages.length} unique full-size images. Removed ${duplicateCount} duplicate${duplicateCount === 1 ? "" : "s"}. Image 1 selected.`
+        );
+      } else {
+        setStatus(`Found ${extractedImages.length} full-size images. Image 1 selected.`);
+      }
     } catch (extractError) {
       setError(extractError.message || "Image extraction failed.");
       setStatus("Extraction failed.");
@@ -414,12 +498,12 @@ function App() {
     }
   };
 
-const downloadZip = () => {
-  if (!images.length) return;
-  const zipUrl = `/api/download-zip?urls=${encodeURIComponent(JSON.stringify(images))}`;
-  window.open(zipUrl, "_blank", "noopener,noreferrer");
-};
-  
+  const downloadZip = () => {
+    if (!images.length) return;
+    const zipUrl = `/api/download-zip?urls=${encodeURIComponent(JSON.stringify(images))}`;
+    window.open(zipUrl, "_blank", "noopener,noreferrer");
+  };
+
   const replaceTemplateFile = async (templateId, file) => {
     if (!file) return;
     if (file.type && file.type !== "image/png") {
@@ -555,7 +639,10 @@ const downloadZip = () => {
       const canvas = canvasRef.current;
       const blob = await canvasToPngBlob(canvas);
       const index = selectedImageIndex >= 0 ? selectedImageIndex : 0;
-      downloadBlob(blob, getExportFilename({ pageUrl: url, imageUrl: selectedImage, template: activeTemplate, index }));
+      downloadBlob(
+        blob,
+        getExportFilename({ pageUrl: url, imageUrl: selectedImage, template: activeTemplate, index })
+      );
       setStatus(`Exported image ${index + 1} with ${activeTemplate.name}.`);
     } catch (exportError) {
       setError(exportError.message || "Export failed. Please try again.");
@@ -602,7 +689,9 @@ const downloadZip = () => {
         <div>
           <p className="eyebrow">Standalone tool</p>
           <h1>Vehicle Image Suite</h1>
-          <p className="header-copy">Extract full-size Vansco images, package them, and compose template-ready vehicle artwork.</p>
+          <p className="header-copy">
+            Extract full-size Vansco images, package them, and compose template-ready vehicle artwork.
+          </p>
         </div>
         <div className="header-actions">
           <span className="status-pill">Local editor</span>
@@ -645,16 +734,29 @@ const downloadZip = () => {
 
           <div className="image-grid" aria-label="Extracted vehicle images">
             {images.map((imageUrl, index) => (
-              <button
+              <div
                 className={`image-card ${selectedImage === imageUrl ? "is-selected" : ""}`}
-                key={imageUrl}
-                type="button"
-                onClick={() => selectImage(imageUrl)}
+                key={`${normalizeImageUrl(imageUrl)}-${index}`}
               >
-                <img src={getImageProxyUrl(imageUrl)} alt={`Extracted vehicle ${index + 1}`} />
-                <span>Image {index + 1}</span>
-                {selectedImage === imageUrl ? <strong>Selected</strong> : null}
-              </button>
+                <button
+                  className="image-card-select"
+                  type="button"
+                  onClick={() => selectImage(imageUrl)}
+                >
+                  <img src={getImageProxyUrl(imageUrl)} alt={`Extracted vehicle ${index + 1}`} />
+                  <span>Image {index + 1}</span>
+                  {selectedImage === imageUrl ? <strong>Selected</strong> : null}
+                </button>
+
+                <button
+                  className="image-card-delete"
+                  type="button"
+                  onClick={() => deleteImage(imageUrl)}
+                  aria-label={`Delete image ${index + 1}`}
+                >
+                  Delete
+                </button>
+              </div>
             ))}
           </div>
         </div>
@@ -665,17 +767,24 @@ const downloadZip = () => {
               <p className="panel-kicker">Template editor</p>
               <h2>Compose export image</h2>
             </div>
-            <span className="count-pill">{activeTemplate.width} x {activeTemplate.height}</span>
+            <span className="count-pill">
+              {activeTemplate.width} x {activeTemplate.height}
+            </span>
           </div>
 
           <div className="editor-layout">
             <aside className="editor-sidebar">
               <div className="template-list">
                 {templates.map((template) => (
-                  <div className={`template-card ${activeTemplateId === template.id ? "is-active" : ""}`} key={template.id}>
+                  <div
+                    className={`template-card ${activeTemplateId === template.id ? "is-active" : ""}`}
+                    key={template.id}
+                  >
                     <button className="template-select" type="button" onClick={() => setActiveTemplateId(template.id)}>
                       <span>{template.name}</span>
-                      <small>{template.category} | {template.width} x {template.height}</small>
+                      <small>
+                        {template.category} | {template.width} x {template.height}
+                      </small>
                     </button>
                     <div className="template-file-row">
                       <code>{template.fileLabel || template.filePath}</code>
@@ -702,11 +811,21 @@ const downloadZip = () => {
 
               <div className="control-stack">
                 <div className="image-nav-row">
-                  <button className="button subtle" type="button" onClick={() => moveImageSelection(-1)} disabled={!images.length || selectedImageIndex <= 0}>
+                  <button
+                    className="button subtle"
+                    type="button"
+                    onClick={() => moveImageSelection(-1)}
+                    disabled={!images.length || selectedImageIndex <= 0}
+                  >
                     Previous Image
                   </button>
                   <span>{images.length ? `${selectedImageIndex + 1} / ${images.length}` : "0 / 0"}</span>
-                  <button className="button subtle" type="button" onClick={() => moveImageSelection(1)} disabled={!images.length || selectedImageIndex >= images.length - 1}>
+                  <button
+                    className="button subtle"
+                    type="button"
+                    onClick={() => moveImageSelection(1)}
+                    disabled={!images.length || selectedImageIndex >= images.length - 1}
+                  >
                     Next Image
                   </button>
                 </div>
@@ -727,10 +846,20 @@ const downloadZip = () => {
                 <button className="button subtle" type="button" onClick={resetEditor} disabled={!selectedImage}>
                   Reset image
                 </button>
-                <button className="button primary full" type="button" onClick={exportImage} disabled={!selectedImage || isExporting || isExportingAll}>
+                <button
+                  className="button primary full"
+                  type="button"
+                  onClick={exportImage}
+                  disabled={!selectedImage || isExporting || isExportingAll}
+                >
                   {isExporting ? "Exporting" : "Export PNG"}
                 </button>
-                <button className="button ghost full" type="button" onClick={exportAllImages} disabled={!images.length || isExporting || isExportingAll}>
+                <button
+                  className="button ghost full"
+                  type="button"
+                  onClick={exportAllImages}
+                  disabled={!images.length || isExporting || isExportingAll}
+                >
                   {isExportingAll ? "Exporting All" : "Export All Images"}
                 </button>
               </div>
@@ -749,7 +878,9 @@ const downloadZip = () => {
                   aria-label="Template editor canvas"
                 />
               </div>
-              <p className="canvas-note">Vehicle image moves behind the locked PNG template. Export remains fixed at 960 x 720.</p>
+              <p className="canvas-note">
+                Vehicle image moves behind the locked PNG template. Export remains fixed at 960 x 720.
+              </p>
             </div>
           </div>
         </div>
