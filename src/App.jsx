@@ -497,6 +497,20 @@ function App() {
 
      const rawImages = Array.isArray(data.images) ? data.images : [];
 
+const filteredImages = rawImages.filter((url) => {
+  const lower = String(url).toLowerCase();
+
+  return (
+    !lower.includes("logo") &&
+    !lower.includes("icon") &&
+    !lower.includes("badge") &&
+    !lower.includes("placeholder") &&
+    !lower.includes("spinner") &&
+    !lower.includes("brand") &&
+    !lower.includes(".svg")
+  );
+});
+
 console.log("RAW IMAGES", rawImages);
 console.log(
   "RAW IMAGE DEBUG",
@@ -506,8 +520,8 @@ console.log(
   }))
 );
 
-const extractedImages = dedupeImageUrls(rawImages);
-const duplicateCount = rawImages.length - extractedImages.length;
+const extractedImages = dedupeImageUrls(filteredImages);
+const duplicateCount = filteredImages.length - extractedImages.length;
 
       setImages(extractedImages);
       setSelectedImage(extractedImages[0] || "");
