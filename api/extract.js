@@ -13,51 +13,18 @@ export default async function handler(req, res) {
       ...html.matchAll(/https:\/\/[^"'\\s>]+?\.(jpg|jpeg|png)(\?[^"'\\s>]*)?/gi),
     ];
 
-    const rawImages = matches.map((match) => match[0]);
+    const rawImages = matches.map((match) => match[0].replace(/\\\//g, "/"));
 
-    const isLikelyVehicleImage = (value) => {
-      const lower = String(value || "").toLowerCase();
-
-      return !(
-        lower.includes("logo") ||
-        lower.includes("icon") ||
-        lower.includes("badge") ||
-        lower.includes("placeholder") ||
-        lower.includes("spinner") ||
-        lower.includes("brand") ||
-        lower.includes("thumb") ||
-        lower.includes("thumbnail")
-      );
-    };
-
-    const getDedupeKey = (value) => {
-      try {
-        const cleaned = String(value || "").replace(/\\\//g, "/").trim();
-        const parsed = new URL(cleaned);
-        return `${parsed.origin}${parsed.pathname}`.toLowerCase();
-      } catch {
-        return String(value || "")
-          .replace(/\\\//g, "/")
-          .split("?")[0]
-          .trim()
-          .toLowerCase();
-      }
-    };
-
-    const images = [];
-    const seen = new Set();
-
+    const counts = {};
     for (const imageUrl of rawImages) {
-      if (!isLikelyVehicleImage(imageUrl)) continue;
-
-      const key = getDedupeKey(imageUrl);
-      if (!key || seen.has(key)) continue;
-
-      seen.add(key);
-      images.push(imageUrl.replace(/\\\//g, "/"));
+      counts[imageUrl] = (counts[imageUrl] || 0) + 1;
     }
 
-    return res.status(200).json({ images });
+    return res.status(200).json({
+      total: rawImages.length,
+      unique: Object.keys(counts).length,
+      images: Object.keys(counts).slice(0, 120),
+    });
   } catch (err) {
     return res.status(500).json({
       error: "Extraction failed",
