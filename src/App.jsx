@@ -282,19 +282,6 @@ function getImageDedupeKeys(value) {
   const raw = String(value || "").trim();
   if (!raw) return [];
 
-  const simplifyFilename = (input) => {
-    const lower = String(input || "").toLowerCase();
-
-    const noExtension = lower.replace(/\.(jpg|jpeg|png|webp|gif)$/i, "");
-
-    const strippedSizeSuffix = noExtension
-      .replace(/[-_](\d{2,5}x\d{2,5})$/i, "")
-      .replace(/[-_](large|small|medium|thumb|thumbnail|full|zoom)$/i, "")
-      .replace(/[-_]\d+$/i, "");
-
-    return strippedSizeSuffix;
-  };
-
   try {
     const parsed = new URL(raw);
     parsed.hash = "";
@@ -320,20 +307,16 @@ function getImageDedupeKeys(value) {
 
     const pathname = parsed.pathname.toLowerCase();
     const filename = pathname.split("/").filter(Boolean).pop() || pathname;
-    const simplifiedFilename = simplifyFilename(filename);
 
     return [
       parsed.toString().toLowerCase(),
       pathname,
       filename,
-      simplifiedFilename,
     ].filter(Boolean);
   } catch {
     const cleaned = raw.toLowerCase().split("#")[0].split("?")[0];
     const filename = cleaned.split("/").filter(Boolean).pop() || cleaned;
-    const simplifiedFilename = simplifyFilename(filename);
-
-    return [cleaned, filename, simplifiedFilename].filter(Boolean);
+    return [cleaned, filename].filter(Boolean);
   }
 }
 
