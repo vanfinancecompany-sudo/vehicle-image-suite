@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 
+const CONTROL_CENTRE_URL =
+  import.meta.env.VITE_CONTROL_CENTRE_URL ||
+  "https://control-centre-navy.vercel.app";
+
 const API_BASE = "";
 const TEMPLATE_STORAGE_KEY = "vehicle-image-suite-template-library";
 
@@ -652,8 +656,8 @@ function App() {
         <div className="header-actions">
           <span className="status-pill">Local editor</span>
           <span className="status-pill muted">No CRM coupling</span>
-          <a className="header-link-button" href="https://marketing-crm-six.vercel.app">
-            Back to Marketing CRM
+          <a className="header-link-button" href={CONTROL_CENTRE_URL}>
+            Control Centre
           </a>
         </div>
       </header>
