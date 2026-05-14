@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import BackgroundStudio from "./pages/BackgroundStudio.jsx";
 import "./App.css";
 
 const CONTROL_CENTRE_URL =
@@ -286,7 +287,7 @@ function normalizeImageUrl(value) {
   return String(value || "").trim().toLowerCase();
 }
 
-function App() {
+function ImageSuiteApp() {
   const [url, setUrl] = useState("");
   const [images, setImages] = useState([]);
   const [selectedImage, setSelectedImage] = useState("");
@@ -656,6 +657,9 @@ function App() {
         <div className="header-actions">
           <span className="status-pill">Local editor</span>
           <span className="status-pill muted">No CRM coupling</span>
+          <a className="header-link-button" href="/background-studio">
+            Background Studio
+          </a>
           <a className="header-link-button" href={CONTROL_CENTRE_URL}>
             Control Centre
           </a>
@@ -892,6 +896,16 @@ function App() {
       </section>
     </main>
   );
+}
+
+function App() {
+  const currentPath = typeof window === "undefined" ? "/" : window.location.pathname;
+
+  if (currentPath === "/background-studio") {
+    return <BackgroundStudio />;
+  }
+
+  return <ImageSuiteApp />;
 }
 
 export default App;
