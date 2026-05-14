@@ -809,6 +809,33 @@
   font-size: 0.98rem;
 }
 
+.studio-layer-selector {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 14px 20px 16px;
+}
+
+.studio-layer-selector button {
+  min-height: 38px;
+  border: 1px solid rgba(248, 250, 252, 0.14);
+  border-radius: 999px;
+  background: rgba(248, 250, 252, 0.07);
+  color: #cbd5e1;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.studio-layer-selector button.is-active {
+  border-color: rgba(248, 113, 113, 0.72);
+  background: rgba(239, 68, 68, 0.2);
+  color: #ffffff;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.08);
+}
+
 .studio-control-section {
   display: grid;
   gap: 14px;
@@ -882,6 +909,12 @@
 }
 
 .studio-button-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.studio-action-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
@@ -997,6 +1030,9 @@
   box-shadow:
     0 40px 120px rgba(0, 0, 0, 0.56),
     0 0 0 10px rgba(255, 255, 255, 0.04);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
 }
 
 @media (max-width: 1180px) {
@@ -1018,7 +1054,9 @@
     flex-direction: column;
   }
 
-  .studio-button-grid {
+  .studio-button-grid,
+  .studio-action-grid,
+  .studio-layer-selector {
     grid-template-columns: 1fr;
   }
 

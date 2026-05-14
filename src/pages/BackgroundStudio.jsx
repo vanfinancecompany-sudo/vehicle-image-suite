@@ -20,11 +20,17 @@ const DEFAULTS = {
   logoX: 110,
   logoY: 142,
   logoRotation: 0,
+  logoSkewX: 0,
+  logoSkewY: 0,
   logoOpacity: 1,
   logoVisible: true,
   shadowOn: true,
   shadowStrength: 0.35,
   shadowBlur: 24,
+  shadowWidth: 520,
+  shadowHeight: 52,
+  shadowX: 0,
+  shadowY: 10,
 };
 
 function loadCanvasImage(source) {
@@ -47,6 +53,88 @@ function drawCoverImage(context, image, width, height) {
 
 function formatValue(value) {
   return Number.isInteger(value) ? value : value.toFixed(2);
+}
+
+function getCanvasPoint(event, canvas) {
+  const bounds = canvas.getBoundingClientRect();
+  return {
+    x: ((event.clientX - bounds.left) / bounds.width) * CANVAS_SIZE.width,
+    y: ((event.clientY - bounds.top) / bounds.height) * CANVAS_SIZE.height,
+  };
+}
+
+function pointInBounds(point, bounds) {
+  if (!bounds) return false;
+  return point.x >= bounds.left && point.x <= bounds.right && point.y >= bounds.top && point.y <= bounds.bottom;
+}
+
+function getTransformedLogoCorners(width, height, settings) {
+  const skewX = Math.tan((settings.logoSkewX * Math.PI) / 180);
+  const skewY = Math.tan((settings.logoSkewY * Math.PI) / 180);
+  const rotation = (settings.logoRotation * Math.PI) / 180;
+  const centerX = settings.logoX + width / 2;
+  const centerY = settings.logoY + height / 2;
+  const cos = Math.cos(rotation);
+  const sin = Math.sin(rotation);
+  const corners = [
+    { x: -width / 2, y: -height / 2 },
+    { x: width / 2, y: -height / 2 },
+    { x: width / 2, y: height / 2 },
+    { x: -width / 2, y: height / 2 },
+  ];
+
+  return corners.map((corner) => {
+    const skewedX = corner.x + skewX * corner.y;
+    const skewedY = corner.y + skewY * corner.x;
+    return {
+      x: centerX + skewedX * cos - skewedY * sin,
+      y: centerY + skewedX * sin + skewedY * cos,
+    };
+  });
+}
+
+function getPolygonBounds(points) {
+  const xs = points.map((point) => point.x);
+  const ys = points.map((point) => point.y);
+  return {
+    left: Math.min(...xs),
+    right: Math.max(...xs),
+    top: Math.min(...ys),
+    bottom: Math.max(...ys),
+  };
+}
+
+function drawSelectionOutline(context, corners, label) {
+  if (!corners?.length) return;
+
+  context.save();
+  context.strokeStyle = "rgba(248, 250, 252, 0.92)";
+  context.lineWidth = 2;
+  context.setLineDash([10, 8]);
+  context.beginPath();
+  corners.forEach((corner, index) => {
+    if (index === 0) {
+      context.moveTo(corner.x, corner.y);
+    } else {
+      context.lineTo(corner.x, corner.y);
+    }
+  });
+  context.closePath();
+  context.stroke();
+  context.setLineDash([]);
+  context.fillStyle = "rgba(239, 68, 68, 0.92)";
+  corners.forEach((corner) => {
+    context.beginPath();
+    context.arc(corner.x, corner.y, 6, 0, Math.PI * 2);
+    context.fill();
+  });
+  context.font = "800 13px Arial, sans-serif";
+  context.fillStyle = "rgba(15, 23, 42, 0.88)";
+  const bounds = getPolygonBounds(corners);
+  context.fillRect(bounds.left, bounds.top - 24, Math.max(54, label.length * 8), 20);
+  context.fillStyle = "#ffffff";
+  context.fillText(label, bounds.left + 8, bounds.top - 9);
+  context.restore();
 }
 
 function StudioSlider({ label, min, max, step = 1, value, onChange }) {
@@ -86,6 +174,8 @@ function BackgroundStudio() {
   const logoRef = useRef(null);
   const vanRef = useRef(null);
   const objectUrlsRef = useRef(new Set());
+  const layerMetricsRef = useRef({ van: null, logo: null });
+  const dragStateRef = useRef(null);
 
   const [originalVanFile, setOriginalVanFile] = useState(null);
   const [originalVanUrl, setOriginalVanUrl] = useState("");
@@ -97,6 +187,7 @@ function BackgroundStudio() {
   const [statusMessage, setStatusMessage] = useState("Ready for a dealership-grade 960 x 720 export.");
   const [errorMessage, setErrorMessage] = useState("");
   const [settings, setSettings] = useState(DEFAULTS);
+  const [selectedLayer, setSelectedLayer] = useState("van");
   const [renderTick, setRenderTick] = useState(0);
 
   const revokeObjectUrl = useCallback((url) => {
@@ -123,7 +214,7 @@ function BackgroundStudio() {
     setRenderTick((current) => current + 1);
   }, []);
 
-  const drawCanvas = useCallback(() => {
+  const drawCanvas = useCallback((showSelection = true) => {
     const canvas = canvasRef.current;
     const context = canvas?.getContext("2d");
 
@@ -134,6 +225,7 @@ function BackgroundStudio() {
     canvas.width = CANVAS_SIZE.width;
     canvas.height = CANVAS_SIZE.height;
     context.clearRect(0, 0, CANVAS_SIZE.width, CANVAS_SIZE.height);
+    layerMetricsRef.current = { van: null, logo: null };
     drawCoverImage(context, templateRef.current, CANVAS_SIZE.width, CANVAS_SIZE.height);
 
     const logoImage = logoRef.current;
@@ -142,11 +234,24 @@ function BackgroundStudio() {
       const logoHeight = logoImage.naturalHeight * settings.logoZoom;
       const logoCenterX = settings.logoX + logoWidth / 2;
       const logoCenterY = settings.logoY + logoHeight / 2;
+      const logoCorners = getTransformedLogoCorners(logoWidth, logoHeight, settings);
+      layerMetricsRef.current.logo = {
+        bounds: getPolygonBounds(logoCorners),
+        corners: logoCorners,
+      };
 
       context.save();
       context.globalAlpha = settings.logoOpacity;
       context.translate(logoCenterX, logoCenterY);
       context.rotate((settings.logoRotation * Math.PI) / 180);
+      context.transform(
+        1,
+        Math.tan((settings.logoSkewY * Math.PI) / 180),
+        Math.tan((settings.logoSkewX * Math.PI) / 180),
+        1,
+        0,
+        0
+      );
       context.drawImage(logoImage, -logoWidth / 2, -logoHeight / 2, logoWidth, logoHeight);
       context.restore();
     }
@@ -173,28 +278,74 @@ function BackgroundStudio() {
     const vanHeight = vanImage.naturalHeight * fitScale * settings.vanZoom;
     const vanLeft = settings.vanX - vanWidth / 2;
     const vanTop = settings.vanY - vanHeight / 2;
+    const vanCorners = [
+      { x: vanLeft, y: vanTop },
+      { x: vanLeft + vanWidth, y: vanTop },
+      { x: vanLeft + vanWidth, y: vanTop + vanHeight },
+      { x: vanLeft, y: vanTop + vanHeight },
+    ];
+    layerMetricsRef.current.van = {
+      bounds: {
+        left: vanLeft,
+        right: vanLeft + vanWidth,
+        top: vanTop,
+        bottom: vanTop + vanHeight,
+      },
+      corners: vanCorners,
+    };
 
     if (settings.shadowOn) {
+      const tyreLine = vanTop + vanHeight * 0.92;
+      const shadowCenterX = settings.vanX + settings.shadowX;
+      const shadowCenterY = tyreLine + settings.shadowY;
+
       context.save();
       context.globalAlpha = settings.shadowStrength;
       context.fillStyle = "#000000";
       context.filter = `blur(${settings.shadowBlur}px)`;
       context.beginPath();
       context.ellipse(
-        settings.vanX,
-        vanTop + vanHeight * 0.92,
-        Math.max(70, vanWidth * 0.38),
-        Math.max(18, vanHeight * 0.065),
+        shadowCenterX,
+        shadowCenterY,
+        settings.shadowWidth / 2,
+        settings.shadowHeight / 2,
         0,
         0,
         Math.PI * 2
       );
       context.fill();
       context.restore();
+
+      context.save();
+      context.globalAlpha = Math.min(0.78, settings.shadowStrength + 0.2);
+      context.fillStyle = "#000000";
+      context.filter = "blur(7px)";
+      [-0.28, 0.28].forEach((offset) => {
+        context.beginPath();
+        context.ellipse(
+          settings.vanX + vanWidth * offset + settings.shadowX * 0.35,
+          tyreLine + settings.shadowY * 0.55,
+          Math.max(28, vanWidth * 0.085),
+          Math.max(8, vanHeight * 0.025),
+          0,
+          0,
+          Math.PI * 2
+        );
+        context.fill();
+      });
+      context.restore();
     }
 
     context.drawImage(vanImage, vanLeft, vanTop, vanWidth, vanHeight);
-  }, [settings]);
+
+    if (showSelection && selectedLayer === "logo" && layerMetricsRef.current.logo) {
+      drawSelectionOutline(context, layerMetricsRef.current.logo.corners, "Logo");
+    }
+
+    if (showSelection && selectedLayer === "van" && layerMetricsRef.current.van) {
+      drawSelectionOutline(context, layerMetricsRef.current.van.corners, "Van");
+    }
+  }, [selectedLayer, settings]);
 
   useEffect(() => {
     let isMounted = true;
@@ -270,7 +421,7 @@ function BackgroundStudio() {
   }, [drawCanvas, queueDraw, vanUrl]);
 
   useEffect(() => {
-    drawCanvas();
+    drawCanvas(false);
   }, [drawCanvas, renderTick]);
 
   useEffect(() => {
@@ -297,6 +448,7 @@ function BackgroundStudio() {
     setOriginalVanFile(file);
     setOriginalVanUrl(url);
     setVanUrl(url);
+    setSelectedLayer("van");
     setStatusMessage("Van image loaded. Adjust placement or remove the background when ready.");
     setErrorMessage("");
   };
@@ -330,6 +482,7 @@ function BackgroundStudio() {
     const url = createObjectUrl(file);
     setLogoUrl(url);
     updateSetting("logoVisible", true);
+    setSelectedLayer("logo");
     setStatusMessage("Logo layer loaded.");
     setErrorMessage("");
   };
@@ -396,6 +549,114 @@ function BackgroundStudio() {
     setErrorMessage("");
   };
 
+  const fitToScene = () => {
+    setSettings((current) => ({
+      ...current,
+      vanZoom: 1,
+      vanX: 480,
+      vanY: 500,
+      shadowOn: true,
+      shadowStrength: 0.38,
+      shadowBlur: 26,
+      shadowWidth: 560,
+      shadowHeight: 56,
+      shadowX: 0,
+      shadowY: 12,
+    }));
+    setSelectedLayer("van");
+    setStatusMessage("Fit to scene applied.");
+  };
+
+  const resetComposition = () => {
+    setSettings(DEFAULTS);
+    setSelectedLayer("van");
+    setStatusMessage("Composition reset.");
+    setErrorMessage("");
+  };
+
+  const nudgeVan = (updates) => {
+    setSettings((current) => ({
+      ...current,
+      ...updates(current),
+    }));
+    setSelectedLayer("van");
+  };
+
+  const handleCanvasPointerDown = (event) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const point = getCanvasPoint(event, canvas);
+    const metrics = layerMetricsRef.current;
+    const logoHit = settings.logoVisible && pointInBounds(point, metrics.logo?.bounds);
+    const vanHit = pointInBounds(point, metrics.van?.bounds);
+
+    if (!logoHit && !vanHit) return;
+
+    const layer = logoHit ? "logo" : "van";
+    const anchorX = layer === "logo" ? settings.logoX : settings.vanX;
+    const anchorY = layer === "logo" ? settings.logoY : settings.vanY;
+
+    dragStateRef.current = {
+      layer,
+      offsetX: point.x - anchorX,
+      offsetY: point.y - anchorY,
+    };
+    setSelectedLayer(layer);
+    canvas.setPointerCapture?.(event.pointerId);
+  };
+
+  const handleCanvasPointerMove = (event) => {
+    const dragState = dragStateRef.current;
+    const canvas = canvasRef.current;
+    if (!dragState || !canvas) return;
+
+    const point = getCanvasPoint(event, canvas);
+    const nextX = Math.round(point.x - dragState.offsetX);
+    const nextY = Math.round(point.y - dragState.offsetY);
+
+    setSettings((current) => ({
+      ...current,
+      ...(dragState.layer === "logo"
+        ? {
+            logoX: nextX,
+            logoY: nextY,
+          }
+        : {
+            vanX: nextX,
+            vanY: nextY,
+          }),
+    }));
+  };
+
+  const handleCanvasPointerUp = (event) => {
+    if (canvasRef.current?.hasPointerCapture?.(event.pointerId)) {
+      canvasRef.current.releasePointerCapture(event.pointerId);
+    }
+    dragStateRef.current = null;
+  };
+
+  const handleCanvasWheel = (event) => {
+    if (!selectedLayer) return;
+    event.preventDefault();
+    const direction = event.deltaY > 0 ? -1 : 1;
+    const amount = selectedLayer === "logo" ? 0.03 : 0.06;
+
+    setSettings((current) => {
+      if (selectedLayer === "logo") {
+        return {
+          ...current,
+          logoZoom: Math.min(1.6, Math.max(0.05, Number((current.logoZoom + direction * amount).toFixed(2)))),
+        };
+      }
+
+      return {
+        ...current,
+        vanZoom: Math.min(3.5, Math.max(0.2, Number((current.vanZoom + direction * amount).toFixed(2)))),
+      };
+    });
+  };
+
   const exportPng = () => {
     drawCanvas();
     const canvas = canvasRef.current;
@@ -443,6 +704,23 @@ function BackgroundStudio() {
           <div className="studio-controls-header">
             <span>Composer controls</span>
             <strong>Layered advert build</strong>
+          </div>
+
+          <div className="studio-layer-selector" aria-label="Selected layer">
+            <button
+              className={selectedLayer === "van" ? "is-active" : ""}
+              type="button"
+              onClick={() => setSelectedLayer("van")}
+            >
+              Van layer
+            </button>
+            <button
+              className={selectedLayer === "logo" ? "is-active" : ""}
+              type="button"
+              onClick={() => setSelectedLayer("logo")}
+            >
+              Logo layer
+            </button>
           </div>
 
           <StudioSection kicker="01" title="Van Image">
@@ -530,6 +808,20 @@ function BackgroundStudio() {
               onChange={(value) => updateSetting("logoRotation", value)}
             />
             <StudioSlider
+              label="Logo skew X"
+              min={-30}
+              max={30}
+              value={settings.logoSkewX}
+              onChange={(value) => updateSetting("logoSkewX", value)}
+            />
+            <StudioSlider
+              label="Logo skew Y"
+              min={-24}
+              max={24}
+              value={settings.logoSkewY}
+              onChange={(value) => updateSetting("logoSkewY", value)}
+            />
+            <StudioSlider
               label="Logo opacity"
               min={0.1}
               max={1}
@@ -588,9 +880,69 @@ function BackgroundStudio() {
               value={settings.shadowBlur}
               onChange={(value) => updateSetting("shadowBlur", value)}
             />
+            <StudioSlider
+              label="Shadow width"
+              min={140}
+              max={900}
+              value={settings.shadowWidth}
+              onChange={(value) => updateSetting("shadowWidth", value)}
+            />
+            <StudioSlider
+              label="Shadow height"
+              min={12}
+              max={150}
+              value={settings.shadowHeight}
+              onChange={(value) => updateSetting("shadowHeight", value)}
+            />
+            <StudioSlider
+              label="Shadow X"
+              min={-220}
+              max={220}
+              value={settings.shadowX}
+              onChange={(value) => updateSetting("shadowX", value)}
+            />
+            <StudioSlider
+              label="Shadow Y"
+              min={-80}
+              max={150}
+              value={settings.shadowY}
+              onChange={(value) => updateSetting("shadowY", value)}
+            />
           </StudioSection>
 
-          <StudioSection kicker="06" title="Export">
+          <StudioSection kicker="06" title="Quick Actions">
+            <div className="studio-action-grid">
+              <button className="studio-button" type="button" onClick={fitToScene}>
+                Fit to scene
+              </button>
+              <button
+                className="studio-button"
+                type="button"
+                onClick={() => nudgeVan((current) => ({ vanY: current.vanY + 24, shadowY: current.shadowY + 4 }))}
+              >
+                Lower van
+              </button>
+              <button
+                className="studio-button"
+                type="button"
+                onClick={() => nudgeVan((current) => ({ vanZoom: Math.max(0.2, current.vanZoom - 0.08) }))}
+              >
+                Smaller van
+              </button>
+              <button
+                className="studio-button"
+                type="button"
+                onClick={() => nudgeVan((current) => ({ vanZoom: Math.min(3.5, current.vanZoom + 0.08) }))}
+              >
+                Larger van
+              </button>
+            </div>
+            <button className="studio-button" type="button" onClick={resetComposition}>
+              Reset composition
+            </button>
+          </StudioSection>
+
+          <StudioSection kicker="07" title="Export">
             <button className="studio-export-button" type="button" onClick={exportPng}>
               Export PNG
             </button>
@@ -618,6 +970,11 @@ function BackgroundStudio() {
               className="background-studio-canvas premium-studio-canvas"
               width={CANVAS_SIZE.width}
               height={CANVAS_SIZE.height}
+              onPointerDown={handleCanvasPointerDown}
+              onPointerMove={handleCanvasPointerMove}
+              onPointerUp={handleCanvasPointerUp}
+              onPointerCancel={handleCanvasPointerUp}
+              onWheel={handleCanvasWheel}
             />
           </div>
         </section>
