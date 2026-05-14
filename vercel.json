@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/background-studio",
+      "destination": "/index.html"
+    }
+  ]
+}
