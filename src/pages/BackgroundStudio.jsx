@@ -13,14 +13,18 @@ const CANVAS_SIZE = {
 };
 
 const DEFAULTS = {
-  vanZoom: 0.85,
-  vanX: 470,
-  vanY: 430,
-  logoZoom: 0.28,
-  logoX: 155,
-  logoY: 215,
+  vanZoom: 1,
+  vanX: 480,
+  vanY: 470,
+  logoZoom: 0.35,
+  logoX: 110,
+  logoY: 142,
+  logoRotation: 0,
+  logoOpacity: 1,
+  logoVisible: true,
   shadowOn: true,
   shadowStrength: 0.35,
+  shadowBlur: 24,
 };
 
 function loadCanvasImage(source) {
@@ -32,12 +36,25 @@ function loadCanvasImage(source) {
   });
 }
 
-function SliderControl({ label, min, max, step = 1, value, onChange }) {
+function drawCoverImage(context, image, width, height) {
+  const scale = Math.max(width / image.naturalWidth, height / image.naturalHeight);
+  const drawWidth = image.naturalWidth * scale;
+  const drawHeight = image.naturalHeight * scale;
+  const left = (width - drawWidth) / 2;
+  const top = (height - drawHeight) / 2;
+  context.drawImage(image, left, top, drawWidth, drawHeight);
+}
+
+function formatValue(value) {
+  return Number.isInteger(value) ? value : value.toFixed(2);
+}
+
+function StudioSlider({ label, min, max, step = 1, value, onChange }) {
   return (
-    <label className="background-slider">
+    <label className="studio-slider">
       <span>
         {label}
-        <strong>{value}</strong>
+        <strong>{formatValue(value)}</strong>
       </span>
       <input
         type="range"
@@ -51,26 +68,47 @@ function SliderControl({ label, min, max, step = 1, value, onChange }) {
   );
 }
 
+function StudioSection({ kicker, title, children }) {
+  return (
+    <section className="studio-control-section">
+      <div className="studio-section-heading">
+        <span>{kicker}</span>
+        <h3>{title}</h3>
+      </div>
+      {children}
+    </section>
+  );
+}
+
 function BackgroundStudio() {
   const canvasRef = useRef(null);
-  const backgroundRef = useRef(null);
+  const templateRef = useRef(null);
   const logoRef = useRef(null);
   const vanRef = useRef(null);
-  const objectUrlsRef = useRef([]);
+  const objectUrlsRef = useRef(new Set());
 
-  const [originalFile, setOriginalFile] = useState(null);
+  const [originalVanFile, setOriginalVanFile] = useState(null);
   const [originalVanUrl, setOriginalVanUrl] = useState("");
   const [vanUrl, setVanUrl] = useState("");
+  const [templateUrl, setTemplateUrl] = useState(showroomTemplate);
+  const [logoUrl, setLogoUrl] = useState(vanFinanceLogo);
   const [removeBackgroundEnabled, setRemoveBackgroundEnabled] = useState(false);
   const [isRemoving, setIsRemoving] = useState(false);
-  const [statusMessage, setStatusMessage] = useState("");
+  const [statusMessage, setStatusMessage] = useState("Ready for a dealership-grade 960 x 720 export.");
   const [errorMessage, setErrorMessage] = useState("");
   const [settings, setSettings] = useState(DEFAULTS);
   const [renderTick, setRenderTick] = useState(0);
 
-  const createObjectUrl = useCallback((blob) => {
-    const url = URL.createObjectURL(blob);
-    objectUrlsRef.current.push(url);
+  const revokeObjectUrl = useCallback((url) => {
+    if (objectUrlsRef.current.has(url)) {
+      URL.revokeObjectURL(url);
+      objectUrlsRef.current.delete(url);
+    }
+  }, []);
+
+  const createObjectUrl = useCallback((file) => {
+    const url = URL.createObjectURL(file);
+    objectUrlsRef.current.add(url);
     return url;
   }, []);
 
@@ -89,32 +127,48 @@ function BackgroundStudio() {
     const canvas = canvasRef.current;
     const context = canvas?.getContext("2d");
 
-    if (!canvas || !context || !backgroundRef.current || !logoRef.current) {
+    if (!canvas || !context || !templateRef.current) {
       return;
     }
 
     canvas.width = CANVAS_SIZE.width;
     canvas.height = CANVAS_SIZE.height;
     context.clearRect(0, 0, CANVAS_SIZE.width, CANVAS_SIZE.height);
-    context.drawImage(backgroundRef.current, 0, 0, CANVAS_SIZE.width, CANVAS_SIZE.height);
+    drawCoverImage(context, templateRef.current, CANVAS_SIZE.width, CANVAS_SIZE.height);
 
     const logoImage = logoRef.current;
-    const logoWidth = logoImage.naturalWidth * settings.logoZoom;
-    const logoHeight = logoImage.naturalHeight * settings.logoZoom;
-    context.drawImage(logoImage, settings.logoX, settings.logoY, logoWidth, logoHeight);
+    if (settings.logoVisible && logoImage) {
+      const logoWidth = logoImage.naturalWidth * settings.logoZoom;
+      const logoHeight = logoImage.naturalHeight * settings.logoZoom;
+      const logoCenterX = settings.logoX + logoWidth / 2;
+      const logoCenterY = settings.logoY + logoHeight / 2;
+
+      context.save();
+      context.globalAlpha = settings.logoOpacity;
+      context.translate(logoCenterX, logoCenterY);
+      context.rotate((settings.logoRotation * Math.PI) / 180);
+      context.drawImage(logoImage, -logoWidth / 2, -logoHeight / 2, logoWidth, logoHeight);
+      context.restore();
+    }
 
     const vanImage = vanRef.current;
     if (!vanImage) {
       context.save();
-      context.fillStyle = "rgba(15, 23, 42, 0.72)";
-      context.font = "700 24px Inter, Arial, sans-serif";
+      context.fillStyle = "rgba(2, 6, 23, 0.58)";
+      context.strokeStyle = "rgba(255, 255, 255, 0.16)";
+      context.lineWidth = 2;
+      context.roundRect(260, 478, 440, 78, 22);
+      context.fill();
+      context.stroke();
+      context.fillStyle = "#f8fafc";
+      context.font = "800 24px Arial, sans-serif";
       context.textAlign = "center";
-      context.fillText("Upload a van image to begin", CANVAS_SIZE.width / 2, 520);
+      context.fillText("Upload a van image to begin", CANVAS_SIZE.width / 2, 528);
       context.restore();
       return;
     }
 
-    const fitScale = Math.min(700 / vanImage.naturalWidth, 390 / vanImage.naturalHeight);
+    const fitScale = Math.min(720 / vanImage.naturalWidth, 430 / vanImage.naturalHeight);
     const vanWidth = vanImage.naturalWidth * fitScale * settings.vanZoom;
     const vanHeight = vanImage.naturalHeight * fitScale * settings.vanZoom;
     const vanLeft = settings.vanX - vanWidth / 2;
@@ -123,14 +177,14 @@ function BackgroundStudio() {
     if (settings.shadowOn) {
       context.save();
       context.globalAlpha = settings.shadowStrength;
-      context.fillStyle = "#020617";
-      context.filter = "blur(18px)";
+      context.fillStyle = "#000000";
+      context.filter = `blur(${settings.shadowBlur}px)`;
       context.beginPath();
       context.ellipse(
         settings.vanX,
         vanTop + vanHeight * 0.92,
-        Math.max(80, vanWidth * 0.38),
-        Math.max(18, vanHeight * 0.06),
+        Math.max(70, vanWidth * 0.38),
+        Math.max(18, vanHeight * 0.065),
         0,
         0,
         Math.PI * 2
@@ -145,27 +199,53 @@ function BackgroundStudio() {
   useEffect(() => {
     let isMounted = true;
 
-    Promise.all([loadCanvasImage(showroomTemplate), loadCanvasImage(vanFinanceLogo)])
-      .then(([background, logo]) => {
+    loadCanvasImage(templateUrl)
+      .then((image) => {
         if (!isMounted) return;
-        backgroundRef.current = background;
-        logoRef.current = logo;
+        templateRef.current = image;
         queueDraw();
       })
       .catch(() => {
         if (!isMounted) return;
-        setErrorMessage("Could not load the showroom template or logo.");
+        setErrorMessage("Could not load this template. The current template is still available.");
       });
 
     return () => {
       isMounted = false;
     };
-  }, [queueDraw]);
+  }, [queueDraw, templateUrl]);
+
+  useEffect(() => {
+    if (!logoUrl) {
+      logoRef.current = null;
+      drawCanvas();
+      return;
+    }
+
+    let isMounted = true;
+    loadCanvasImage(logoUrl)
+      .then((image) => {
+        if (!isMounted) return;
+        logoRef.current = image;
+        queueDraw();
+      })
+      .catch(() => {
+        if (!isMounted) return;
+        logoRef.current = null;
+        setErrorMessage("Could not load this logo. The logo layer has been hidden.");
+        updateSetting("logoVisible", false);
+        queueDraw();
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [drawCanvas, logoUrl, queueDraw, updateSetting]);
 
   useEffect(() => {
     if (!vanUrl) {
       vanRef.current = null;
-      queueDraw();
+      drawCanvas();
       return;
     }
 
@@ -187,37 +267,90 @@ function BackgroundStudio() {
     return () => {
       isMounted = false;
     };
-  }, [queueDraw, vanUrl]);
+  }, [drawCanvas, queueDraw, vanUrl]);
 
   useEffect(() => {
     drawCanvas();
   }, [drawCanvas, renderTick]);
 
   useEffect(() => {
+    const objectUrls = objectUrlsRef.current;
     return () => {
-      objectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      objectUrls.forEach((url) => URL.revokeObjectURL(url));
+      objectUrls.clear();
     };
   }, []);
 
-  const handleUpload = (event) => {
+  const handleVanUpload = (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
-      setErrorMessage("Please upload an image file.");
+      setErrorMessage("Please upload a van image file.");
       return;
     }
 
+    revokeObjectUrl(originalVanUrl);
+    if (vanUrl !== originalVanUrl) revokeObjectUrl(vanUrl);
+
     const url = createObjectUrl(file);
-    setOriginalFile(file);
+    setOriginalVanFile(file);
     setOriginalVanUrl(url);
     setVanUrl(url);
-    setStatusMessage("Van image loaded.");
+    setStatusMessage("Van image loaded. Adjust placement or remove the background when ready.");
+    setErrorMessage("");
+  };
+
+  const handleTemplateUpload = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setErrorMessage("Please upload a template image file.");
+      return;
+    }
+
+    revokeObjectUrl(templateUrl);
+    const url = createObjectUrl(file);
+    setTemplateUrl(url);
+    setStatusMessage("Premium template loaded.");
+    setErrorMessage("");
+  };
+
+  const handleLogoUpload = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setErrorMessage("Please upload a logo image file.");
+      return;
+    }
+
+    revokeObjectUrl(logoUrl);
+    const url = createObjectUrl(file);
+    setLogoUrl(url);
+    updateSetting("logoVisible", true);
+    setStatusMessage("Logo layer loaded.");
+    setErrorMessage("");
+  };
+
+  const resetTemplate = () => {
+    revokeObjectUrl(templateUrl);
+    setTemplateUrl(showroomTemplate);
+    setStatusMessage("Fallback premium showroom template restored.");
+    setErrorMessage("");
+  };
+
+  const resetLogo = () => {
+    revokeObjectUrl(logoUrl);
+    setLogoUrl(vanFinanceLogo);
+    updateSetting("logoVisible", true);
+    setStatusMessage("Fallback Van Finance logo restored.");
     setErrorMessage("");
   };
 
   const applyBackgroundRemoval = async () => {
-    if (!originalFile) {
+    if (!originalVanFile) {
       setErrorMessage("Upload a van image before removing the background.");
       return;
     }
@@ -228,24 +361,24 @@ function BackgroundStudio() {
     }
 
     if (typeof removeBackground !== "function") {
-      setErrorMessage(
-        "Background removal unavailable — you can still use the image without removing the background."
-      );
+      setErrorMessage("Background removal unavailable - you can still use the image without removing the background.");
       return;
     }
 
     setIsRemoving(true);
-    setStatusMessage("");
+    setStatusMessage("Removing background...");
     setErrorMessage("");
 
     try {
-      const result = await removeBackground(originalFile);
+      const result = await removeBackground(originalVanFile);
+      if (vanUrl !== originalVanUrl) revokeObjectUrl(vanUrl);
       const url = createObjectUrl(result);
       setVanUrl(url);
-      setStatusMessage("Background removed.");
+      setStatusMessage("Background removed. Fine tune the van placement for export.");
     } catch {
       setVanUrl(originalVanUrl);
       setErrorMessage("Could not remove background for this image. Original image is still available.");
+      setStatusMessage("");
     } finally {
       setIsRemoving(false);
     }
@@ -257,6 +390,7 @@ function BackgroundStudio() {
       return;
     }
 
+    if (vanUrl !== originalVanUrl) revokeObjectUrl(vanUrl);
     setVanUrl(originalVanUrl);
     setStatusMessage("Original van image restored.");
     setErrorMessage("");
@@ -281,19 +415,20 @@ function BackgroundStudio() {
       link.click();
       link.remove();
       URL.revokeObjectURL(url);
+      setStatusMessage("PNG exported at 960 x 720.");
     }, "image/png");
   };
 
   return (
-    <main className="suite-shell background-studio-shell">
-      <header className="suite-header">
+    <main className="suite-shell background-studio-shell premium-background-studio">
+      <header className="studio-hero">
         <div>
-          <p className="eyebrow">Standalone tool</p>
+          <p className="eyebrow">Premium studio</p>
           <h1>Background Studio</h1>
-          <p className="header-copy">Compose a van, showroom background, logo layer, and soft floor shadow.</p>
+          <p className="header-copy">Premium van advert composer for dealership-ready 960 x 720 PNGs.</p>
         </div>
-        <div className="header-actions">
-          <span className="status-pill">960 x 720 PNG</span>
+        <div className="studio-hero-actions">
+          <span className="studio-format-pill">960 x 720 PNG export</span>
           <a className="header-link-button" href="/">
             Image Suite
           </a>
@@ -303,22 +438,19 @@ function BackgroundStudio() {
         </div>
       </header>
 
-      <section className="background-studio-grid">
-        <aside className="panel background-controls">
-          <div className="panel-header">
-            <div>
-              <p className="panel-kicker">Controls</p>
-              <h2>Image layers</h2>
-            </div>
+      <section className="studio-workspace">
+        <aside className="studio-controls-panel">
+          <div className="studio-controls-header">
+            <span>Composer controls</span>
+            <strong>Layered advert build</strong>
           </div>
 
-          <div className="background-control-stack">
-            <label className="file-button background-upload">
+          <StudioSection kicker="01" title="Van Image">
+            <label className="studio-upload-button">
               Upload van image
-              <input type="file" accept="image/*" onChange={handleUpload} />
+              <input type="file" accept="image/*" onChange={handleVanUpload} />
             </label>
-
-            <label className="toggle-row">
+            <label className="studio-toggle">
               <input
                 type="checkbox"
                 checked={removeBackgroundEnabled}
@@ -326,45 +458,114 @@ function BackgroundStudio() {
               />
               <span>Remove background</span>
             </label>
-
-            <div className="background-button-row">
+            <div className="studio-button-grid">
               <button
-                className="button primary"
+                className="studio-button primary"
                 type="button"
                 onClick={applyBackgroundRemoval}
-                disabled={isRemoving || !originalFile}
+                disabled={isRemoving || !originalVanFile}
               >
                 {isRemoving ? "Removing..." : "Apply background removal"}
               </button>
-              <button className="button secondary" type="button" onClick={resetToOriginal} disabled={!originalFile}>
+              <button className="studio-button" type="button" onClick={resetToOriginal} disabled={!originalVanFile}>
                 Reset to original
               </button>
             </div>
+          </StudioSection>
 
-            <SliderControl
-              label="Van zoom"
-              min={0.35}
+          <StudioSection kicker="02" title="Premium Template">
+            <label className="studio-upload-button secondary">
+              Upload template/background
+              <input type="file" accept="image/*" onChange={handleTemplateUpload} />
+            </label>
+            <button className="studio-button" type="button" onClick={resetTemplate}>
+              Reset fallback template
+            </button>
+          </StudioSection>
+
+          <StudioSection kicker="03" title="Logo Layer">
+            <label className="studio-upload-button secondary">
+              Upload logo
+              <input type="file" accept="image/*" onChange={handleLogoUpload} />
+            </label>
+            <div className="studio-button-grid">
+              <button
+                className="studio-button"
+                type="button"
+                onClick={() => updateSetting("logoVisible", !settings.logoVisible)}
+              >
+                {settings.logoVisible ? "Hide logo" : "Show logo"}
+              </button>
+              <button className="studio-button" type="button" onClick={resetLogo}>
+                Reset logo
+              </button>
+            </div>
+            <StudioSlider
+              label="Logo zoom"
+              min={0.05}
               max={1.6}
+              step={0.01}
+              value={settings.logoZoom}
+              onChange={(value) => updateSetting("logoZoom", value)}
+            />
+            <StudioSlider
+              label="Logo X position"
+              min={-260}
+              max={960}
+              value={settings.logoX}
+              onChange={(value) => updateSetting("logoX", value)}
+            />
+            <StudioSlider
+              label="Logo Y position"
+              min={-160}
+              max={720}
+              value={settings.logoY}
+              onChange={(value) => updateSetting("logoY", value)}
+            />
+            <StudioSlider
+              label="Logo rotation"
+              min={-35}
+              max={35}
+              value={settings.logoRotation}
+              onChange={(value) => updateSetting("logoRotation", value)}
+            />
+            <StudioSlider
+              label="Logo opacity"
+              min={0.1}
+              max={1}
+              step={0.01}
+              value={settings.logoOpacity}
+              onChange={(value) => updateSetting("logoOpacity", value)}
+            />
+          </StudioSection>
+
+          <StudioSection kicker="04" title="Van Placement">
+            <StudioSlider
+              label="Van zoom"
+              min={0.2}
+              max={3.5}
               step={0.01}
               value={settings.vanZoom}
               onChange={(value) => updateSetting("vanZoom", value)}
             />
-            <SliderControl
+            <StudioSlider
               label="Van X position"
-              min={0}
-              max={960}
+              min={-320}
+              max={1280}
               value={settings.vanX}
               onChange={(value) => updateSetting("vanX", value)}
             />
-            <SliderControl
+            <StudioSlider
               label="Van Y position"
-              min={220}
-              max={680}
+              min={-120}
+              max={900}
               value={settings.vanY}
               onChange={(value) => updateSetting("vanY", value)}
             />
+          </StudioSection>
 
-            <label className="toggle-row">
+          <StudioSection kicker="05" title="Shadow">
+            <label className="studio-toggle">
               <input
                 type="checkbox"
                 checked={settings.shadowOn}
@@ -372,59 +573,49 @@ function BackgroundStudio() {
               />
               <span>Shadow on/off</span>
             </label>
-            <SliderControl
+            <StudioSlider
               label="Shadow strength"
               min={0}
-              max={0.8}
+              max={0.85}
               step={0.01}
               value={settings.shadowStrength}
               onChange={(value) => updateSetting("shadowStrength", value)}
             />
+            <StudioSlider
+              label="Shadow blur"
+              min={4}
+              max={60}
+              value={settings.shadowBlur}
+              onChange={(value) => updateSetting("shadowBlur", value)}
+            />
+          </StudioSection>
 
-            <SliderControl
-              label="Logo zoom"
-              min={0.08}
-              max={0.65}
-              step={0.01}
-              value={settings.logoZoom}
-              onChange={(value) => updateSetting("logoZoom", value)}
-            />
-            <SliderControl
-              label="Logo X position"
-              min={0}
-              max={760}
-              value={settings.logoX}
-              onChange={(value) => updateSetting("logoX", value)}
-            />
-            <SliderControl
-              label="Logo Y position"
-              min={0}
-              max={560}
-              value={settings.logoY}
-              onChange={(value) => updateSetting("logoY", value)}
-            />
-
-            <button className="button primary export-button" type="button" onClick={exportPng}>
+          <StudioSection kicker="06" title="Export">
+            <button className="studio-export-button" type="button" onClick={exportPng}>
               Export PNG
             </button>
-
-            {statusMessage ? <p className="background-message success">{statusMessage}</p> : null}
-            {errorMessage ? <p className="background-message error">{errorMessage}</p> : null}
-          </div>
+            {statusMessage ? <p className="studio-message success">{statusMessage}</p> : null}
+            {errorMessage ? <p className="studio-message error">{errorMessage}</p> : null}
+          </StudioSection>
         </aside>
 
-        <section className="panel background-preview-panel">
-          <div className="panel-header">
+        <section className="studio-preview-panel">
+          <div className="studio-preview-topbar">
             <div>
-              <p className="panel-kicker">Preview</p>
-              <h2>Showroom canvas</h2>
+              <span>Live canvas</span>
+              <strong>Advert preview</strong>
             </div>
-            <span className="status-pill muted">Logo layer separate</span>
+            <div className="studio-layer-pills">
+              <span>Template</span>
+              <span>Logo</span>
+              <span>Shadow</span>
+              <span>Van</span>
+            </div>
           </div>
-          <div className="background-preview-frame">
+          <div className="studio-canvas-stage">
             <canvas
               ref={canvasRef}
-              className="background-studio-canvas"
+              className="background-studio-canvas premium-studio-canvas"
               width={CANVAS_SIZE.width}
               height={CANVAS_SIZE.height}
             />
