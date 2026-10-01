@@ -562,3 +562,32 @@
     padding: 10px;
   }
 }
+
+/* Campaign uses the existing left column; the Template Editor stays in place. */
+.suite-left-column { display: flex; flex-direction: column; gap: 24px; min-width: 0; align-self: start; }
+.editor-fieldset { margin: 0; border: 0; min-width: 0; }
+.campaign-body { padding: 18px 22px 22px; display: grid; gap: 14px; }
+.campaign-body label, .campaign-form label { display: grid; gap: 6px; font-size: .88rem; }
+.campaign-body input, .campaign-body select, .price-controls input, .price-controls select {
+  width: 100%; min-height: 38px; padding: 8px 10px; color: #f8fafc;
+  background: #0f172a; border: 1px solid rgba(148,163,184,.3); border-radius: 10px;
+}
+.campaign-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.campaign-actions [aria-pressed="true"] { border-color: #38bdf8; background: #143047; }
+.campaign-counts { margin: 0; color: #aebbd0; }
+.campaign-queue { display: grid; gap: 8px; max-height: 420px; overflow-y: auto; }
+.campaign-vehicle { display: grid; gap: 6px; padding: 12px; border: 1px solid #334155;
+  border-radius: 12px; background: #0f172a; color: #e5eefb; text-align: left; cursor: pointer; }
+.campaign-vehicle.is-selected { border-color: #38bdf8; background: #143047; }
+.campaign-vehicle.is-done small { color: #a7f3d0; }
+.campaign-warning { color: #fcd34d; font-size: .82rem; margin: 0; }
+.campaign-form { display: grid; gap: 10px; padding: 12px 0; }
+.campaign-upload { padding: 10px; border: 1px solid #334155; border-radius: 12px; background: #1e293b; }
+.campaign-body summary, .price-controls summary { cursor: pointer; font-weight: 700; padding: 8px 0; }
+.campaign-body fieldset { margin: 10px 0; border: 1px solid #334155; border-radius: 10px; }
+.library-template-wrapper { display: grid; align-content: start; gap: 8px; }
+.library-template-wrapper .library-template-card { width: 100%; }
+.price-controls { padding: 12px; border: 1px solid #334155; border-radius: 12px; }
+button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible {
+  outline: 2px solid #38bdf8; outline-offset: 3px;
+}

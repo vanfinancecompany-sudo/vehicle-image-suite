@@ -1,11 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
+import "@fontsource/anton/latin-400.css";
+import SalesCampaignPanel, { DynamicPriceControls } from "./campaign/SalesCampaignPanel.jsx";
+import VehicleThumbnail from "./campaign/VehicleThumbnail.jsx";
+import useCampaign from "./campaign/useCampaign.js";
+import { campaignFilename, DEFAULT_TRANSFORM, nextUnfinished } from "./campaign/campaignModel.js";
+import { isUpload, readImage, storeImage, removeStoredImage } from "./campaign/campaignStorage.js";
+import { drawPrices, ensurePriceFont } from "./campaign/priceRenderer.js";
 
 const CONTROL_CENTRE_URL =
   import.meta.env.VITE_CONTROL_CENTRE_URL ||
   "https://control-centre-navy.vercel.app";
 
-const API_BASE = "";
+const HIDDEN_TEMPLATE_KEY = "vehicle-image-suite-hidden-template-ids";
+
+function hiddenTemplateIds() {
+  try { const ids = JSON.parse(localStorage.getItem(HIDDEN_TEMPLATE_KEY) || "[]"); return Array.isArray(ids) ? ids : []; }
+  catch { return []; }
+}
 const TEMPLATE_STORAGE_KEY = "vehicle-image-suite-template-library";
 
 const EDITOR_CANVAS = {
@@ -38,8 +50,13 @@ const DEFAULT_TEMPLATES = [
   },
 ];
 
-function getImageProxyUrl(url) {
-  return `/api/image?url=${encodeURIComponent(url)}`;
+async function loadVehicleImage(reference) {
+  if (!isUpload(reference)) return loadCanvasImage(`/api/image?url=${encodeURIComponent(reference)}`, true);
+  const blob = await readImage(reference);
+  if (!blob) throw new Error("Stored image is missing. Upload it again to continue.");
+  const objectUrl = URL.createObjectURL(blob);
+  try { return await loadCanvasImage(objectUrl); }
+  finally { URL.revokeObjectURL(objectUrl); }
 }
 
 function clamp(value, min, max) {
@@ -105,7 +122,7 @@ function loadTemplateLibrary() {
 
   try {
     const stored = JSON.parse(window.localStorage.getItem(TEMPLATE_STORAGE_KEY) || "[]");
-    if (!Array.isArray(stored)) return DEFAULT_TEMPLATES;
+    if (!Array.isArray(stored)) return DEFAULT_TEMPLATES.filter(template => !hiddenTemplateIds().includes(template.id));
 
     const storedById = new Map(stored.map((template) => [template.id, template]));
     const defaultTemplates = DEFAULT_TEMPLATES.map((template) =>
@@ -115,9 +132,9 @@ function loadTemplateLibrary() {
       .filter((template) => !DEFAULT_TEMPLATES.some((defaultTemplate) => defaultTemplate.id === template.id))
       .map(normalizeTemplate);
 
-    return [...defaultTemplates, ...customTemplates];
+    return [...defaultTemplates, ...customTemplates].filter(template => !hiddenTemplateIds().includes(template.id));
   } catch {
-    return DEFAULT_TEMPLATES;
+    return DEFAULT_TEMPLATES.filter(template => !hiddenTemplateIds().includes(template.id));
   }
 }
 
@@ -131,7 +148,7 @@ function loadCanvasImage(src, useCrossOrigin = false) {
   });
 }
 
-function drawComposite(ctx, vehicleImage, templateImage, template, transform) {
+function drawComposite(ctx, vehicleImage, templateImage, template, transform, job, priceLayout) {
   const { width, height } = template;
   ctx.clearRect(0, 0, width, height);
   ctx.fillStyle = "#111827";
@@ -157,6 +174,7 @@ function drawComposite(ctx, vehicleImage, templateImage, template, transform) {
   if (templateImage) {
     ctx.drawImage(templateImage, 0, 0, width, height);
   }
+  if (job) drawPrices(ctx, job, priceLayout);
 }
 
 function canvasToPngBlob(canvas) {
@@ -279,7 +297,7 @@ function downloadBlob(blob, filename) {
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
-  URL.revokeObjectURL(objectUrl);
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
 }
 
 function normalizeImageUrl(value) {
@@ -287,110 +305,107 @@ function normalizeImageUrl(value) {
 }
 
 function App() {
+  const { campaign, updateCampaign, storageError } = useCampaign();
+  const activeJob = campaign.enabled ? campaign.jobs.find(job => job.id === campaign.activeJobId) : null;
+  const activeJobId = activeJob?.id;
   const [url, setUrl] = useState("");
-  const [images, setImages] = useState([]);
-  const [selectedImage, setSelectedImage] = useState("");
+  const [normalImages, setNormalImages] = useState([]);
+  const [normalSelectedImage, setNormalSelectedImage] = useState("");
+  const [normalTransform, setNormalTransform] = useState({ ...DEFAULT_TRANSFORM });
   const [templates, setTemplates] = useState(loadTemplateLibrary);
-  const [activeTemplateId, setActiveTemplateId] = useState(
-    () => DEFAULT_TEMPLATES.find((template) => template.isDefault)?.id || DEFAULT_TEMPLATES[0].id
-  );
+  const [normalTemplateId, setNormalTemplateId] = useState(() => loadTemplateLibrary()[0]?.id || "");
   const [newTemplateName, setNewTemplateName] = useState("");
   const [newTemplateFile, setNewTemplateFile] = useState(null);
-  const [imageTransform, setImageTransform] = useState({ x: 0, y: 0, scale: 1 });
   const [dragStart, setDragStart] = useState(null);
   const [status, setStatus] = useState("Ready to extract full-size vehicle images.");
   const [error, setError] = useState("");
   const [isExtracting, setIsExtracting] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isExportingAll, setIsExportingAll] = useState(false);
-
+  const [isUploading, setIsUploading] = useState(false);
+  const busy = isExtracting || isExporting || isExportingAll || isUploading;
   const canvasRef = useRef(null);
-  const loadedImageRef = useRef(null);
-  const templateOverlayRef = useRef(null);
+  const drawSequence = useRef(0);
 
-  const activeTemplate = useMemo(
-    () => templates.find((template) => template.id === activeTemplateId) || templates[0],
-    [activeTemplateId, templates]
-  );
+  const onJobChange = useCallback(patch => updateCampaign(current => ({
+    ...current, jobs: current.jobs.map(job => job.id === activeJobId ? { ...job, ...patch } : job),
+  })), [activeJobId, updateCampaign]);
 
+  const images = activeJob ? activeJob.images : normalImages;
+  const selectedImage = activeJob ? activeJob.selectedImage : normalSelectedImage;
+  const imageTransform = activeJob ? activeJob.transform : normalTransform;
+  const activeTemplateId = activeJob ? campaign.templateId : normalTemplateId;
+  const activeTemplate = useMemo(() => activeJob
+    ? templates.find(template => template.id === campaign.templateId)
+    : templates.find(template => template.id === normalTemplateId) || templates[0],
+    [activeJob, campaign.templateId, normalTemplateId, templates]);
+
+  const setImageTransform = updater => {
+    if (activeJob) {
+      const transform = typeof updater === "function" ? updater(activeJob.transform) : updater;
+      onJobChange({ transform });
+    } else setNormalTransform(updater);
+  };
+  const chooseTemplate = id => {
+    if (activeJob) updateCampaign(current => ({ ...current, templateId: id }));
+    else setNormalTemplateId(id);
+  };
+  const selectJob = id => {
+    setDragStart(null);
+    if (updateCampaign(current => ({ ...current, enabled: true, activeJobId: id }))) {
+      setError("");
+      setStatus("Campaign vehicle selected. Choose its photo and campaign overlay.");
+    }
+  };
+  const exitCampaign = () => {
+    setDragStart(null);
+    updateCampaign(current => ({ ...current, enabled: false }));
+  };
   const selectedImageIndex = useMemo(
     () => images.findIndex((imageUrl) => imageUrl === selectedImage),
     [images, selectedImage]
   );
 
   useEffect(() => {
-    try {
+    Promise.resolve().then(() => {
       window.localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(templates));
-    } catch {
-      setError("Template library is too large to persist in browser storage.");
-    }
+    }).catch(() => setError("Template library is too large to persist in browser storage."));
   }, [templates]);
 
-  const drawCanvas = useCallback(() => {
+  const drawCanvas = useCallback(async () => {
+    const sequence = ++drawSequence.current;
     const canvas = canvasRef.current;
-    if (!canvas || !activeTemplate) return;
-
-    const ctx = canvas.getContext("2d");
-    canvas.width = activeTemplate.width;
-    canvas.height = activeTemplate.height;
-    drawComposite(ctx, loadedImageRef.current, templateOverlayRef.current, activeTemplate, imageTransform);
-  }, [activeTemplate, imageTransform]);
-
-  useEffect(() => {
+    if (!canvas) return;
+    canvas.width = EDITOR_CANVAS.width;
+    canvas.height = EDITOR_CANVAS.height;
     if (!activeTemplate) return;
-
-    let isCancelled = false;
-    loadCanvasImage(activeTemplate.filePath)
-      .then((overlay) => {
-        if (isCancelled) return;
-        templateOverlayRef.current = overlay;
-        drawCanvas();
-      })
-      .catch(() => {
-        if (isCancelled) return;
-        templateOverlayRef.current = null;
-        setError("Could not load the selected template overlay.");
-        drawCanvas();
-      });
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [activeTemplate?.filePath, drawCanvas, activeTemplate]);
-
-  useEffect(() => {
-    if (!selectedImage) {
-      loadedImageRef.current = null;
-      drawCanvas();
-      return;
+    // Load all inputs together; never paint or export a previous registration's photo.
+    try {
+      const [image, overlay] = await Promise.all([
+        selectedImage ? loadVehicleImage(selectedImage) : Promise.resolve(null),
+        loadCanvasImage(activeTemplate.filePath),
+        activeJob ? ensurePriceFont() : Promise.resolve(),
+      ]);
+      if (sequence !== drawSequence.current) return;
+      drawComposite(canvas.getContext("2d"), image, overlay, activeTemplate, imageTransform,
+        activeJob, campaign.priceLayout);
+    } catch (drawError) {
+      if (sequence === drawSequence.current) setError(drawError.message);
     }
-
-    let isCancelled = false;
-    loadCanvasImage(getImageProxyUrl(selectedImage), true)
-      .then((image) => {
-        if (isCancelled) return;
-        loadedImageRef.current = image;
-        drawCanvas();
-      })
-      .catch(() => {
-        if (isCancelled) return;
-        loadedImageRef.current = null;
-        setError("Could not load the selected image into the editor.");
-        drawCanvas();
-      });
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [selectedImage, drawCanvas]);
+  }, [activeTemplate, selectedImage, imageTransform, activeJob, campaign.priceLayout]);
 
   useEffect(() => {
     drawCanvas();
+    return () => { drawSequence.current += 1; };
   }, [drawCanvas]);
 
-  const selectImage = (imageUrl) => {
-    setSelectedImage(imageUrl);
-    setImageTransform({ x: 0, y: 0, scale: 1 });
+  const selectImage = imageUrl => {
+    if (busy) return;
+    if (activeJob) onJobChange({ selectedImage: imageUrl, transform: { ...DEFAULT_TRANSFORM } });
+    else {
+      setNormalSelectedImage(imageUrl);
+      setNormalTransform({ ...DEFAULT_TRANSFORM });
+    }
   };
 
   const moveImageSelection = (direction) => {
@@ -401,33 +416,26 @@ function App() {
     selectImage(images[nextIndex]);
   };
 
-  const deleteImage = (imageUrlToDelete) => {
-    setImages((currentImages) => {
-      const indexToDelete = currentImages.findIndex((imageUrl) => imageUrl === imageUrlToDelete);
-      const nextImages = currentImages.filter((_, index) => index !== indexToDelete);
-
-      setSelectedImage((currentSelected) => {
-        if (currentSelected !== imageUrlToDelete) return currentSelected;
-        return nextImages[0] || "";
-      });
-
-      if (selectedImage === imageUrlToDelete) {
-        setImageTransform({ x: 0, y: 0, scale: 1 });
+  const deleteImage = imageUrlToDelete => {
+    if (busy) return;
+    const nextImages = images.filter(image => image !== imageUrlToDelete);
+    const nextSelected = selectedImage === imageUrlToDelete ? nextImages[0] || "" : selectedImage;
+    const transform = selectedImage === imageUrlToDelete ? { ...DEFAULT_TRANSFORM } : imageTransform;
+    if (activeJob) {
+      if (onJobChange({ images: nextImages, selectedImage: nextSelected, transform }) && isUpload(imageUrlToDelete)) {
+        removeStoredImage(imageUrlToDelete).catch(error => setError(error.message));
       }
-
-      setStatus(
-        nextImages.length
-          ? `Removed image. ${nextImages.length} image${nextImages.length === 1 ? "" : "s"} remaining.`
-          : "All extracted images removed."
-      );
-
-      setError("");
-      return nextImages;
-    });
+    } else {
+      setNormalImages(nextImages);
+      setNormalSelectedImage(nextSelected);
+      setNormalTransform(transform);
+    }
+    setStatus(nextImages.length + " images remaining.");
   };
 
-  const extractImages = async () => {
-    if (!url.trim()) {
+  const extractImages = async (sourceUrl = url) => {
+    if (busy) return;
+    if (!sourceUrl.trim()) {
       setError("Paste a Vansco vehicle page URL first.");
       return;
     }
@@ -437,14 +445,17 @@ function App() {
     setStatus("Extracting full-size vehicle images...");
 
     try {
-      const response = await fetch(`/api/extract?url=${encodeURIComponent(url.trim())}`);
+      const response = await fetch(`/api/extract?url=${encodeURIComponent(sourceUrl.trim())}`);
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Image extraction failed.");
 
       const extractedImages = Array.isArray(data.images) ? data.images : [];
-      setImages(extractedImages);
-      setSelectedImage(extractedImages[0] || "");
-      setImageTransform({ x: 0, y: 0, scale: 1 });
+      if (activeJob) onJobChange({ images: [...extractedImages, ...activeJob.images.filter(isUpload)], selectedImage: extractedImages[0] || "", transform: { ...DEFAULT_TRANSFORM } });
+      else {
+        setNormalImages(extractedImages);
+        setNormalSelectedImage(extractedImages[0] || "");
+        setNormalTransform({ ...DEFAULT_TRANSFORM });
+      }
       setStatus(
         extractedImages.length
           ? `Found ${extractedImages.length} full-size images. Image 1 selected.`
@@ -459,13 +470,14 @@ function App() {
   };
 
   const downloadZip = () => {
-    if (!images.length) return;
-    const zipUrl = `/api/download-zip?urls=${encodeURIComponent(JSON.stringify(images))}`;
+    const remoteImages = images.filter(reference => !isUpload(reference));
+    if (!remoteImages.length) return;
+    const zipUrl = `/api/download-zip?urls=${encodeURIComponent(JSON.stringify(remoteImages))}`;
     window.open(zipUrl, "_blank", "noopener,noreferrer");
   };
 
   const replaceTemplateFile = async (templateId, file) => {
-    if (!file) return;
+    if (!file || busy) return;
     if (file.type && file.type !== "image/png") {
       setError("Template files must be PNG images.");
       return;
@@ -485,7 +497,7 @@ function App() {
           };
         })
       );
-      setActiveTemplateId(templateId);
+      chooseTemplate(templateId);
       setStatus(`Updated ${templateName} overlay to ${file.name}.`);
       setError("");
     } catch (readError) {
@@ -494,6 +506,7 @@ function App() {
   };
 
   const addTemplate = async () => {
+    if (busy) return;
     const name = newTemplateName.trim();
     if (!name) {
       setError("Give the new template a name first.");
@@ -523,7 +536,7 @@ function App() {
       };
 
       setTemplates((currentTemplates) => [...currentTemplates, newTemplate]);
-      setActiveTemplateId(newTemplate.id);
+      chooseTemplate(newTemplate.id);
       setNewTemplateName("");
       setNewTemplateFile(null);
       setStatus(`Added ${newTemplate.name} template from ${newTemplate.fileLabel}.`);
@@ -543,13 +556,13 @@ function App() {
   };
 
   const handlePointerDown = (event) => {
-    if (!selectedImage) return;
+    if (!selectedImage || !activeTemplate || busy) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     setDragStart({ point: getCanvasPoint(event), transform: imageTransform });
   };
 
   const handlePointerMove = (event) => {
-    if (!dragStart) return;
+    if (!dragStart || !activeTemplate || busy) return;
     const point = getCanvasPoint(event);
     setImageTransform({
       ...dragStart.transform,
@@ -566,7 +579,7 @@ function App() {
   };
 
   const handleWheel = (event) => {
-    if (!selectedImage) return;
+    if (!selectedImage || busy) return;
     event.preventDefault();
     const delta = event.deltaY > 0 ? -0.05 : 0.05;
     setImageTransform((current) => ({
@@ -575,44 +588,103 @@ function App() {
     }));
   };
 
-  const renderImageWithTemplate = async (imageUrl, transform = { x: 0, y: 0, scale: 1 }) => {
+  const renderImageWithTemplate = async (imageUrl, transform = { ...DEFAULT_TRANSFORM }) => {
+    if (!activeTemplate) throw new Error("Choose a template before exporting.");
     const [vehicleImage, templateImage] = await Promise.all([
-      loadCanvasImage(getImageProxyUrl(imageUrl), true),
+      loadVehicleImage(imageUrl),
       loadCanvasImage(activeTemplate.filePath),
+      activeJob ? ensurePriceFont() : Promise.resolve(),
     ]);
     const canvas = document.createElement("canvas");
     canvas.width = activeTemplate.width;
     canvas.height = activeTemplate.height;
-    const ctx = canvas.getContext("2d");
-    drawComposite(ctx, vehicleImage, templateImage, activeTemplate, transform);
+    drawComposite(canvas.getContext("2d"), vehicleImage, templateImage, activeTemplate, transform,
+      activeJob, campaign.priceLayout);
     return canvasToPngBlob(canvas);
   };
 
-  const exportImage = async () => {
-    if (!selectedImage) return;
-
+  const exportImage = async (markDone = false) => {
+    if (!selectedImage || !activeTemplate || busy) return;
     setIsExporting(true);
     setError("");
-
     try {
-      drawCanvas();
-      const canvas = canvasRef.current;
-      const blob = await canvasToPngBlob(canvas);
+      if (activeJob && (!activeJob.wasPrice || !activeJob.nowPrice || !activeJob.savePrice)) {
+        throw new Error("Enter valid WAS, NOW and SAVE values before exporting.");
+      }
       const index = selectedImageIndex >= 0 ? selectedImageIndex : 0;
-      downloadBlob(
-        blob,
-        getExportFilename({ pageUrl: url, imageUrl: selectedImage, template: activeTemplate, index })
-      );
-      setStatus(`Exported image ${index + 1} with ${activeTemplate.name}.`);
+      const filename = activeJob ? campaignFilename(activeJob)
+        : getExportFilename({ pageUrl: url, imageUrl: selectedImage, template: activeTemplate, index });
+      const blob = await renderImageWithTemplate(selectedImage, imageTransform);
+      downloadBlob(blob, filename);
+      if (activeJob && markDone) {
+        updateCampaign(current => {
+          const jobs = current.jobs.map(job => job.id === activeJob.id ? { ...job, done: true } : job);
+          return { ...current, jobs, activeJobId: nextUnfinished(jobs, activeJob.id) };
+        });
+      }
+      setStatus("Download started: " + filename + ". Check your browser downloads.");
     } catch (exportError) {
       setError(exportError.message || "Export failed. Please try again.");
-    } finally {
-      setIsExporting(false);
+    } finally { setIsExporting(false); }
+  };
+
+  const uploadCampaignImage = async file => {
+    if (!file || !activeJob || busy) return;
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setError("Choose a JPG, PNG or WebP vehicle photo."); return;
     }
+    setIsUploading(true);
+    setError("");
+    try {
+      const reference = await storeImage(file);
+      try {
+        await loadVehicleImage(reference);
+        if (!onJobChange({ images: [...activeJob.images, reference], selectedImage: reference,
+          transform: { ...DEFAULT_TRANSFORM } })) {
+          await removeStoredImage(reference);
+        }
+      } catch (error) {
+        await removeStoredImage(reference);
+        throw error;
+      }
+    } catch (error) { setError(error.message); }
+    finally { setIsUploading(false); }
+  };
+
+  const removeTemplate = templateId => {
+    if (busy) return;
+    const template = templates.find(item => item.id === templateId);
+    if (!window.confirm("Remove " + template.name + "? This will stay removed after refresh.")) return;
+    const remaining = templates.filter(item => item.id !== templateId);
+    try {
+      // Persist before changing the UI; defaults are tombstoned, custom entries deleted.
+      localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(remaining));
+      if (DEFAULT_TEMPLATES.some(item => item.id === templateId)) {
+        localStorage.setItem(HIDDEN_TEMPLATE_KEY, JSON.stringify([...new Set([...hiddenTemplateIds(), templateId])]));
+      }
+      setTemplates(remaining);
+      if (normalTemplateId === templateId) setNormalTemplateId(remaining[0]?.id || "");
+      if (campaign.templateId === templateId) {
+        updateCampaign(current => ({ ...current, templateId: "" }));
+      }
+    } catch { setError("Template removal could not be saved. Free browser storage and try again."); }
+  };
+
+  const restoreDefaults = () => {
+    try {
+      localStorage.removeItem(HIDDEN_TEMPLATE_KEY);
+      const restored = [...templates];
+      for (const template of DEFAULT_TEMPLATES) {
+        if (!restored.some(item => item.id === template.id)) restored.push(template);
+      }
+      localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(restored));
+      setTemplates(restored);
+      if (!normalTemplateId) setNormalTemplateId(restored[0]?.id || "");
+    } catch { setError("Default templates could not be restored."); }
   };
 
   const exportAllImages = async () => {
-    if (!images.length) return;
+    if (!images.length || !activeTemplate || busy) return;
 
     setIsExportingAll(true);
     setError("");
@@ -663,6 +735,7 @@ function App() {
       </header>
 
       <section className="suite-grid">
+        <div className="suite-left-column">
         <div className="panel extractor-panel">
           <div className="panel-header">
             <div>
@@ -679,10 +752,10 @@ function App() {
               onChange={(event) => setUrl(event.target.value)}
               placeholder="Paste Vansco vehicle page URL"
             />
-            <button className="button primary" type="button" onClick={extractImages} disabled={isExtracting}>
+            <button className="button primary" type="button" onClick={() => extractImages()} disabled={busy}>
               {isExtracting ? "Extracting" : "Extract Images"}
             </button>
-            <button className="button ghost" type="button" onClick={downloadZip} disabled={!images.length}>
+            <button className="button ghost" type="button" onClick={downloadZip} disabled={!images.some(reference => !isUpload(reference)) || busy}>
               Download ZIP
             </button>
           </div>
@@ -703,7 +776,7 @@ function App() {
                   type="button"
                   onClick={() => selectImage(imageUrl)}
                 >
-                  <img src={getImageProxyUrl(imageUrl)} alt={`Extracted vehicle ${index + 1}`} />
+                  <VehicleThumbnail reference={imageUrl} alt={`Extracted vehicle ${index + 1}`} />
                   <span>Image {index + 1}</span>
                   {selectedImage === imageUrl ? <strong>Selected</strong> : null}
                 </button>
@@ -721,6 +794,11 @@ function App() {
           </div>
         </div>
 
+        <SalesCampaignPanel campaign={campaign} updateCampaign={updateCampaign} storageError={storageError}
+          templates={templates} activeJob={activeJob} onSelect={selectJob} onExit={exitCampaign}
+          onLoadImages={() => extractImages(activeJob.vehicleUrl)} onUploadImage={uploadCampaignImage}
+          onJobChange={onJobChange} busy={busy} onError={setError} onStatus={setStatus} />
+        </div>
         <div className="panel editor-panel">
           <div className="panel-header">
             <div>
@@ -728,11 +806,11 @@ function App() {
               <h2>Compose export image</h2>
             </div>
             <span className="count-pill">
-              {activeTemplate.width} x {activeTemplate.height}
+              {EDITOR_CANVAS.width} x {EDITOR_CANVAS.height}
             </span>
           </div>
 
-          <div className="editor-layout">
+          <fieldset className="editor-layout editor-fieldset" disabled={busy}>
             <aside className="editor-sidebar">
               <div className="template-list">
                 {templates.map((template) => (
@@ -740,12 +818,13 @@ function App() {
                     className={`template-card ${activeTemplateId === template.id ? "is-active" : ""}`}
                     key={template.id}
                   >
-                    <button className="template-select" type="button" onClick={() => setActiveTemplateId(template.id)}>
+                    <button className="template-select" type="button" onClick={() => chooseTemplate(template.id)}>
                       <span>{template.name}</span>
                       <small>
                         {template.category} | {template.width} x {template.height}
                       </small>
                     </button>
+                    <button className="button ghost" type="button" onClick={() => removeTemplate(template.id)}>Remove {template.name}</button>
                     <div className="template-file-row">
                       <code>{template.fileLabel || template.filePath}</code>
                       <label className="file-button">
@@ -764,9 +843,12 @@ function App() {
                 ))}
               </div>
 
+              {!templates.length && <p>No templates remain. Add a PNG below or restore defaults.</p>}
+              {activeJob && !activeTemplate && <p>Choose a campaign template in the left panel.</p>}
+              <button className="button ghost" type="button" onClick={restoreDefaults}>Restore Default Templates</button>
               <div className="active-template-file">
                 <span>Active file</span>
-                <code>{activeTemplate.fileLabel || activeTemplate.filePath}</code>
+                <code>{activeTemplate ? activeTemplate.fileLabel || activeTemplate.filePath : "Choose or add a template to begin."}</code>
               </div>
 
               <div className="control-stack">
@@ -806,19 +888,22 @@ function App() {
                 <button className="button subtle" type="button" onClick={resetEditor} disabled={!selectedImage}>
                   Reset image
                 </button>
+                {activeJob && <DynamicPriceControls job={activeJob} onChange={onJobChange} disabled={busy} />}
                 <button
                   className="button primary full"
                   type="button"
-                  onClick={exportImage}
-                  disabled={!selectedImage || isExporting || isExportingAll}
+                  onClick={() => exportImage(Boolean(activeJob))}
+                  disabled={!selectedImage || !activeTemplate || busy}
                 >
-                  {isExporting ? "Exporting" : "Export PNG"}
+                  {isExporting ? "Exporting" : activeJob ? "SAVE PNG & MARK DONE" : "Export PNG"}
                 </button>
+                {activeJob && <button className="button ghost full" type="button"
+                  disabled={!selectedImage || !activeTemplate || busy} onClick={() => exportImage(false)}>Export PNG Only</button>}
                 <button
                   className="button ghost full"
                   type="button"
                   onClick={exportAllImages}
-                  disabled={!images.length || isExporting || isExportingAll}
+                  disabled={!images.length || !activeTemplate || busy}
                 >
                   {isExportingAll ? "Exporting All" : "Export All Images"}
                 </button>
@@ -842,7 +927,7 @@ function App() {
                 Vehicle image moves behind the locked PNG template. Export remains fixed at 960 x 720.
               </p>
             </div>
-          </div>
+          </fieldset>
         </div>
       </section>
 
@@ -853,6 +938,7 @@ function App() {
             <h2>Reusable template assets</h2>
           </div>
           <span className="count-pill">{templates.length} templates</span>
+          <button className="button ghost" type="button" disabled={busy} onClick={restoreDefaults}>Restore Default Templates</button>
         </div>
 
         <div className="library-tools">
@@ -870,23 +956,27 @@ function App() {
               onChange={(event) => setNewTemplateFile(event.target.files?.[0] || null)}
             />
           </label>
-          <button className="button primary" type="button" onClick={addTemplate}>
+          <button className="button primary" type="button" onClick={addTemplate} disabled={busy}>
             Add Template
           </button>
         </div>
 
         <div className="template-library-grid">
           {templates.map((template) => (
+            <div key={template.id} className="library-template-wrapper">
             <button
+              disabled={busy}
               className={`library-template-card ${activeTemplateId === template.id ? "is-active" : ""}`}
               key={template.id}
               type="button"
-              onClick={() => setActiveTemplateId(template.id)}
+              onClick={() => chooseTemplate(template.id)}
             >
               <img src={template.filePath} alt={`${template.name} template preview`} />
               <span>{template.name}</span>
               <small>{template.fileLabel || template.filePath}</small>
             </button>
+            <button className="button ghost" type="button" disabled={busy} onClick={() => removeTemplate(template.id)}>Remove {template.name}</button>
+            </div>
           ))}
         </div>
       </section>

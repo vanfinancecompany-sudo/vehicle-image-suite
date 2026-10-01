@@ -1,0 +1,33 @@
+name: Campaign validation
+on:
+  push:
+    branches: [feature/vansco-sale-campaign-workflow]
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - name: Lockfile for review
+        run: node -e "console.log('LOCKFILE_START'); console.log(JSON.stringify(JSON.parse(require('fs').readFileSync('package-lock.json','utf8')))); console.log('LOCKFILE_END')"
+      - run: npm run lint
+      - run: npm run test
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: campaign-validation-results
+          path: |
+            test-results/
+            playwright-report/
+            package-lock.json

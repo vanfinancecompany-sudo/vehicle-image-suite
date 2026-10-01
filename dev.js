@@ -26,7 +26,7 @@ function stop() {
   process.exit(0);
 }
 
-start(process.execPath, ["server/server.js"]);
+start(process.execPath, ["server.js"]);
 start(isWindows ? "npm.cmd" : "npm", ["exec", "vite"]);
 
 process.on("SIGINT", stop);
