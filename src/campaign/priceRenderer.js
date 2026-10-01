@@ -1,6 +1,9 @@
 import { formatPrice, PRICE_FIELDS } from "./campaignModel.js";
 
 export const PRICE_FONTS = [
+  { family: "Arimo", weight: 700, label: "Arimo Bold / 700" },
+  { family: "Noto Sans", weight: 900, label: "Noto Sans Black / 900" },
+  { family: "Roboto", weight: 900, label: "Roboto Black / 900" },
   { family: "League Spartan", weight: 900, label: "League Spartan Black / 900" },
   { family: "League Spartan", weight: 800, label: "League Spartan ExtraBold / 800" },
   { family: "Archivo Black", weight: 400, label: "Archivo Black" },

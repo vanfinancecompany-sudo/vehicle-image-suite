@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 import "@fontsource/anton/latin-400.css";
+import "@fontsource/arimo/latin-700.css";
+import "@fontsource/noto-sans/latin-900.css";
+import "@fontsource/roboto/latin-900.css";
 import "@fontsource/league-spartan/latin-800.css";
 import "@fontsource/league-spartan/latin-900.css";
 import "@fontsource/archivo-black/latin-400.css";
