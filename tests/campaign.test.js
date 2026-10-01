@@ -84,7 +84,8 @@ test("font widths expand from the left anchor and WAS stroke uses the same group
   const wider = { ...DEFAULT_PRICE_LAYOUT, nowPrice: { ...DEFAULT_PRICE_LAYOUT.nowPrice, widthScale: 1.2 } };
   const scaled = priceGeometry(ctx, job, "nowPrice", wider);
   assert.equal(original.x, scaled.x);
-  assert.equal(scaled.width, original.width * 1.2 / DEFAULT_PRICE_LAYOUT.nowPrice.widthScale);
+  assert.equal(scaled.width, ctx.measureText(formatPrice(job.nowPrice)).width * 1.2);
+  assert.equal(scaled.height, original.height);
   job.nowPrice.value = 14995;
   assert.equal(priceGeometry(ctx, job, "nowPrice", wider).x, scaled.x);
   job.priceOffsets.wasPrice = { x: 6, y: -4 };

@@ -36,11 +36,11 @@ async function setup(page) {
   await page.goto("/");
   return errors;
 }
-async function importVehicles(page) {
+async function importVehicles(page, { withoutVehicleUrls = false } = {}) {
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
-    ["Reg", "Sales Location", "Retail Price", "New Sales Price", "Discount", "Vehicle URL"],
-    ["HJ22 LSK", "Vansco 333 Showroom", 14495, 13995, 500, "https://www.vansco.co.uk/vehicle-details/a"],
+    ["Reg", "Sales Location", "Retail Price", "New Sales Price", "Discount", withoutVehicleUrls ? "Image" : "Vehicle URL"],
+    ["HJ22 LSK", "Vansco 333 Showroom", 14495, 13995, 500, withoutVehicleUrls ? "" : "https://www.vansco.co.uk/vehicle-details/a"],
     ["AA22 AAA", "Vansco (Southampton Airport)", 10000, 9000, 1000, ""],
   ]), "Vehicles");
   await page.getByLabel("Upload Spreadsheet", { exact: true }).setInputFiles({
@@ -178,7 +178,7 @@ test("explicit DealerKit loading uses exact registration, persists ordered galle
       primaryImage: "https://cdn.example/vehicle-found.jpg",
       images: [{ url: "https://cdn.example/vehicle-found.jpg", order: 0 }, { url: "https://cdn.example/vehicle-second.jpg", order: 1 }] } });
   });
-  await importVehicles(page);
+  await importVehicles(page, { withoutVehicleUrls: true });
   const panel = page.getByRole("region", { name: "Vansco Sales Campaign" });
   await panel.getByLabel("Campaign template").selectOption("sale-fixture");
   await panel.getByRole("button", { name: /HJ22 LSK · Vansco 333 Showroom/ }).click();
@@ -199,7 +199,8 @@ test("explicit DealerKit loading uses exact registration, persists ordered galle
   await expect(page.getByText("No exact DealerKit match. Upload Image or enter a Vehicle URL.", { exact: true })).toBeVisible();
   expect((await page.evaluate(key => JSON.parse(localStorage.getItem(key)).jobs[0], key)).selectedImage).toBe(job.selectedImage);
   await expect(panel.getByLabel("Upload Image", { exact: true })).toBeEnabled();
-  await expect(panel.getByRole("button", { name: "Load Images From URL" })).toBeEnabled();
+  await expect(panel.getByRole("button", { name: "Load Images From URL" })).toBeVisible();
+  expect(job.vehicleUrl).toBe("");
   expect(errors).toEqual([]);
 });
 
