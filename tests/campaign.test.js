@@ -4,7 +4,7 @@ import * as XLSX from "xlsx";
 import { createJob, formatPrice, campaignFilename, nextUnfinished, newCampaign } from "../src/campaign/campaignModel.js";
 import { parseRows, parseSpreadsheet } from "../src/campaign/spreadsheetParser.js";
 import { loadCampaign, saveCampaign, CAMPAIGN_KEY } from "../src/campaign/campaignStorage.js";
-import { drawPrices } from "../src/campaign/priceRenderer.js";
+import { drawPrices, ensurePriceFont } from "../src/campaign/priceRenderer.js";
 import { extractVehicleImages, validateVanscoUrl, fetchVanscoPage } from "../lib/vanscoExtractor.js";
 
 test("aliases, trims, pence, calculated SAVE and mismatched supplied SAVE", () => {
@@ -115,4 +115,25 @@ test("current sources, srcset, structured arrays, escaping and legacy Dragon2000
   assert.ok(images.includes("https://cdn.example/two.webp"));
   assert.equal(images.filter(url => url.includes("photo-large")).length, 1);
   assert.ok(!images.some(url => /logo|placeholder/.test(url)));
+});
+
+test("campaign font readiness waits for Anton and permits retry after a load failure", async () => {
+  let resolveFont;
+  const previous = globalThis.document;
+  globalThis.document = { fonts: {
+    load: () => new Promise(resolve => { resolveFont = resolve; }),
+    ready: Promise.resolve(),
+    check: () => true,
+  } };
+  try {
+    let finished = false;
+    const pending = ensurePriceFont().then(() => { finished = true; });
+    await Promise.resolve();
+    assert.equal(finished, false);
+    resolveFont([]);
+    await assert.rejects(pending, /Anton is not ready/);
+    const retry = ensurePriceFont();
+    resolveFont([{}]);
+    await retry;
+  } finally { globalThis.document = previous; }
 });

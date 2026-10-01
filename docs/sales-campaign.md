@@ -32,7 +32,8 @@ Export PNG Only keeps the current row open. Browser APIs can confirm download in
 not successful completion on disk or a user's Save-dialog cancellation; manually mark
 Not Done if a download is cancelled. Done vehicles can be reopened and exported again.
 Raw Download ZIP uses extracted remote images; Export All Images also composes uploaded
-photos. The normal extractor, image navigation/deletion, templates and ZIP exports remain.
+photos. In a campaign gallery ZIP, each alternative has its own folder and uses the
+registration/location PNG filename. The normal extractor, image navigation/deletion, templates and ZIP exports remain.
 
 Remove is available on both template lists and requires confirmation. Built-ins are hidden
 using vehicle-image-suite-hidden-template-ids, custom entries are deleted from the existing

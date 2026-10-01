@@ -50,7 +50,24 @@ const DEFAULT_TEMPLATES = [
   },
 ];
 
-async function loadVehicleImage(reference) {
+const canvasImageCache = new Map();
+function cachedCanvasImage(key, loader) {
+  if (canvasImageCache.has(key)) return canvasImageCache.get(key);
+  const pending = loader().catch(error => {
+    if (canvasImageCache.get(key) === pending) canvasImageCache.delete(key);
+    throw error;
+  });
+  canvasImageCache.set(key, pending);
+  // Bound decoded-image memory for large campaigns while keeping drag/zoom responsive.
+  while (canvasImageCache.size > 8) canvasImageCache.delete(canvasImageCache.keys().next().value);
+  return pending;
+}
+
+function loadVehicleImage(reference) {
+  return cachedCanvasImage("vehicle:" + reference, () => readVehicleImage(reference));
+}
+
+async function readVehicleImage(reference) {
   if (!isUpload(reference)) return loadCanvasImage(`/api/image?url=${encodeURIComponent(reference)}`, true);
   const blob = await readImage(reference);
   if (!blob) throw new Error("Stored image is missing. Upload it again to continue.");
@@ -139,6 +156,10 @@ function loadTemplateLibrary() {
 }
 
 function loadCanvasImage(src, useCrossOrigin = false) {
+  return cachedCanvasImage(src, () => readCanvasImage(src, useCrossOrigin));
+}
+
+function readCanvasImage(src, useCrossOrigin = false) {
   return new Promise((resolve, reject) => {
     const image = new Image();
     if (useCrossOrigin) image.crossOrigin = "anonymous";
@@ -696,7 +717,8 @@ function App() {
         const imageUrl = images[index];
         const blob = await renderImageWithTemplate(imageUrl);
         files.push({
-          name: getExportFilename({ pageUrl: url, imageUrl, template: activeTemplate, index }),
+          name: activeJob ? `alternative-${String(index + 1).padStart(2, "0")}/${campaignFilename(activeJob)}`
+            : getExportFilename({ pageUrl: url, imageUrl, template: activeTemplate, index }),
           blob,
         });
       }
@@ -773,6 +795,7 @@ function App() {
               >
                 <button
                   className="image-card-select"
+                  aria-label={`Image ${index + 1}${selectedImage === imageUrl ? " Selected" : ""}`}
                   type="button"
                   onClick={() => selectImage(imageUrl)}
                 >
