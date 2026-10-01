@@ -4,7 +4,7 @@ import * as XLSX from "xlsx";
 import { createJob, formatPrice, campaignFilename, nextUnfinished, newCampaign } from "../src/campaign/campaignModel.js";
 import { parseRows, parseSpreadsheet } from "../src/campaign/spreadsheetParser.js";
 import { loadCampaign, saveCampaign, CAMPAIGN_KEY } from "../src/campaign/campaignStorage.js";
-import { drawPrices, ensurePriceFont } from "../src/campaign/priceRenderer.js";
+import { drawPrices, ensurePriceFont, priceGeometry, DEFAULT_PRICE_LAYOUT } from "../src/campaign/priceRenderer.js";
 import { extractVehicleImages, validateVanscoUrl, fetchVanscoPage } from "../lib/vanscoExtractor.js";
 
 test("aliases, trims, pence, calculated SAVE and mismatched supplied SAVE", () => {
@@ -69,27 +69,45 @@ test("advance wraps to the next unfinished job, and keeps last job if all done",
   assert.equal(nextUnfinished(jobs, "c"), "a");
   assert.equal(nextUnfinished(jobs.map(job => ({ ...job, done: true })), "c"), "c");
 });
-test("prices share a left anchor and WAS strike-through follows its offset", () => {
+test("font widths expand from the left anchor and WAS stroke uses the same group transform", () => {
   const calls = [];
   const ctx = {
     save() {}, restore() {}, beginPath() {}, stroke() {},
+    translate(...args) { calls.push(["translate", ...args]); },
+    scale(...args) { calls.push(["scale", ...args]); },
     fillText(...args) { calls.push(["text", this.textAlign, ...args]); },
-    moveTo(...args) { calls.push(["start", ...args]); }, lineTo() {},
-    measureText(text) { return { width: text.length * 15 }; },
+    moveTo(...args) { calls.push(["start", ...args]); }, lineTo(...args) { calls.push(["end", ...args]); },
+    measureText(text) { return { width: text.length * 15, actualBoundingBoxAscent: 40, actualBoundingBoxDescent: 2 }; },
   };
   const job = createJob({ registration: "A", wasPrice: "14495", nowPrice: "8995" });
-  drawPrices(ctx, job);
-  const before = calls.filter(call => call[0] === "text");
-  calls.length = 0;
+  const original = priceGeometry(ctx, job, "nowPrice");
+  const wider = { ...DEFAULT_PRICE_LAYOUT, nowPrice: { ...DEFAULT_PRICE_LAYOUT.nowPrice, widthScale: 1.2 } };
+  const scaled = priceGeometry(ctx, job, "nowPrice", wider);
+  assert.equal(original.x, scaled.x);
+  assert.equal(scaled.width, original.width * 1.2 / DEFAULT_PRICE_LAYOUT.nowPrice.widthScale);
   job.nowPrice.value = 14995;
-  job.priceOffsets.wasPrice.x = 6;
-  drawPrices(ctx, job);
-  const after = calls.filter(call => call[0] === "text");
-  assert.equal(before[1][3], after[1][3]);
-  assert.equal(after[0][3], before[0][3] + 6);
-  assert.equal(calls.find(call => call[0] === "start")[1], after[0][3] - 2);
-  assert.ok(after.every(call => call[1] === "left"));
+  assert.equal(priceGeometry(ctx, job, "nowPrice", wider).x, scaled.x);
+  job.priceOffsets.wasPrice = { x: 6, y: -4 };
+  drawPrices(ctx, job, { ...wider, wasPrice: { ...DEFAULT_PRICE_LAYOUT.wasPrice, widthScale: 1.1 } });
+  assert.deepEqual(calls[0], ["translate", 36, DEFAULT_PRICE_LAYOUT.wasPrice.y - 4]);
+  assert.deepEqual(calls[1], ["scale", 1.1, 1]);
+  assert.ok(calls.filter(call => call[0] === "text").every(call => call[1] === "left"));
 });
+
+test("Sales Location display, filename and refresh preserve the real spreadsheet values", () => {
+  const locations = ["Vansco 333 Showroom", "Vansco New Forest", "Vansco (Southampton Airport)"];
+  const jobs = parseRows([["Reg", "Sales Location", "Was", "Now", "Image"],
+    ...locations.map(location => [" hj22 lsk ", location, 14495, 13995, ""])]);
+  assert.deepEqual(jobs.map(job => job.location), locations);
+  assert.equal(campaignFilename(jobs[0]), "HJ22-LSK-Vansco-333-Showroom.png");
+  assert.equal(campaignFilename(jobs[2]), "HJ22-LSK-Vansco-Southampton-Airport.png");
+  let raw;
+  const storage = { getItem: () => raw, setItem: (key, value) => { raw = value; } };
+  const campaign = { ...newCampaign(), jobs };
+  saveCampaign(campaign, storage);
+  assert.deepEqual(loadCampaign(storage).jobs.map(job => job.location), locations);
+});
+
 test("Vansco URLs accept all paths but reject lookalikes and offsite redirects", async () => {
   assert.equal(validateVanscoUrl("https://www.vansco.co.uk/vehicle-details/a/"), "https://www.vansco.co.uk/vehicle-details/a/");
   assert.equal(validateVanscoUrl("https://vansco.co.uk/another/future/path"), "https://vansco.co.uk/another/future/path");
@@ -117,7 +135,7 @@ test("current sources, srcset, structured arrays, escaping and legacy Dragon2000
   assert.ok(!images.some(url => /logo|placeholder/.test(url)));
 });
 
-test("campaign font readiness waits for Anton and permits retry after a load failure", async () => {
+test("campaign font readiness waits for the chosen bundled font and permits retry after a load failure", async () => {
   let resolveFont;
   const previous = globalThis.document;
   globalThis.document = { fonts: {
@@ -131,7 +149,7 @@ test("campaign font readiness waits for Anton and permits retry after a load fai
     await Promise.resolve();
     assert.equal(finished, false);
     resolveFont([]);
-    await assert.rejects(pending, /Anton is not ready/);
+    await assert.rejects(pending, /League Spartan is not ready/);
     const retry = ensurePriceFont();
     resolveFont([{}]);
     await retry;

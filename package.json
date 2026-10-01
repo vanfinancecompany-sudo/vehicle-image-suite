@@ -19,7 +19,9 @@
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "@fontsource/anton": "^5.0.0",
-    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
+    "@fontsource/league-spartan": "^5.0.0",
+    "@fontsource/archivo-black": "^5.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",

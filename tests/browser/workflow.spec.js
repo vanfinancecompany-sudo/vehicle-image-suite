@@ -39,9 +39,9 @@ async function setup(page) {
 async function importVehicles(page) {
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
-    ["Reg", "Location", "Retail Price", "New Sales Price", "Discount", "Vehicle URL"],
-    ["HJ22 LSK", "333", 14495, 13995, 500, "https://www.vansco.co.uk/vehicle-details/a"],
-    ["AA22 AAA", "Southampton Airport", 10000, 9000, 1000, ""],
+    ["Reg", "Sales Location", "Retail Price", "New Sales Price", "Discount", "Vehicle URL"],
+    ["HJ22 LSK", "Vansco 333 Showroom", 14495, 13995, 500, "https://www.vansco.co.uk/vehicle-details/a"],
+    ["AA22 AAA", "Vansco (Southampton Airport)", 10000, 9000, 1000, ""],
   ]), "Vehicles");
   await page.getByLabel("Upload Spreadsheet", { exact: true }).setInputFiles({
     name: "campaign.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -61,7 +61,7 @@ test("import, URL and manual photos, nudge, save/advance, restore after refresh 
   await importVehicles(page);
   const panel = page.getByRole("region", { name: "Vansco Sales Campaign" });
   await panel.getByLabel("Campaign template").selectOption("sale-fixture");
-  await panel.getByRole("button", { name: /HJ22 LSK · 333/ }).click();
+  await panel.getByRole("button", { name: /HJ22 LSK · Vansco 333 Showroom/ }).click();
   await panel.getByRole("button", { name: "Load Images From URL" }).click();
   await expect(page.getByRole("button", { name: "Image 2", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Image 2", exact: true }).click();
@@ -85,16 +85,16 @@ test("import, URL and manual photos, nudge, save/advance, restore after refresh 
   expect(before.priceOffsets.nowPrice.x).toBe(2);
   expect(before.selectedImage).toMatch(/^upload:/);
   await expect.poll(() => page.evaluate(() => window.priceDraws.length)).toBeGreaterThan(0);
-  expect(await page.evaluate(() => document.fonts.check('50px "Anton"'))).toBe(true);
+  expect(await page.evaluate(() => document.fonts.check('900 72px "League Spartan"'))).toBe(true);
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "SAVE PNG & MARK DONE", exact: true }).click();
   const download = await downloadPromise;
-  expect(download.suggestedFilename()).toBe("HJ22-LSK-333.png");
+  expect(download.suggestedFilename()).toBe("HJ22-LSK-Vansco-333-Showroom.png");
   await assertPng(download);
   await expect(panel.getByText("1 / 2 COMPLETE", { exact: true })).toBeVisible();
-  await expect(panel.getByText("Active: AA22 AAA · Southampton Airport", { exact: true })).toBeVisible();
+  await expect(panel.getByText("Active: AA22 AAA · Vansco (Southampton Airport)", { exact: true })).toBeVisible();
   await panel.getByRole("button", { name: "Done", exact: true }).click();
-  await panel.getByRole("button", { name: /HJ22 LSK · 333/ }).click();
+  await panel.getByRole("button", { name: /HJ22 LSK · Vansco 333 Showroom/ }).click();
   await page.reload();
   const restored = await page.evaluate(key => JSON.parse(localStorage.getItem(key)).jobs[0], key);
   expect(restored.transform).toEqual(before.transform);
@@ -153,6 +153,9 @@ test("remove in either template list, cancel safely, persist defaults hidden, re
   await page.reload();
   await expect(page.getByRole("button", { name: "Remove Van Finance", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Remove Rent2Buy", exact: true }).first().click();
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Remove Van Finance", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Remove Rent2Buy", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Remove Sale Fixture", exact: true }).last().click();
   await expect(page.getByText("No templates remain. Add a PNG below or restore defaults.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Export PNG", exact: true })).toBeDisabled();
@@ -162,5 +165,96 @@ test("remove in either template list, cancel safely, persist defaults hidden, re
   await expect(page.getByText("2 templates", { exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByRole("button", { name: "Remove Van Finance", exact: true })).toHaveCount(2);
+  expect(errors).toEqual([]);
+});
+
+test("explicit DealerKit loading uses exact registration, persists ordered gallery and keeps fallback photos", async ({ page }) => {
+  const errors = await setup(page);
+  let calls = 0;
+  await page.route("**/api/dealerkit-images?*", async route => {
+    calls++;
+    expect(new URL(route.request().url()).searchParams.get("registration")).toBe("HJ22 LSK");
+    await route.fulfill({ json: { ok: true, registration: "HJ22LSK", supplierStockId: "stock-1",
+      primaryImage: "https://cdn.example/vehicle-found.jpg",
+      images: [{ url: "https://cdn.example/vehicle-found.jpg", order: 0 }, { url: "https://cdn.example/vehicle-second.jpg", order: 1 }] } });
+  });
+  await importVehicles(page);
+  const panel = page.getByRole("region", { name: "Vansco Sales Campaign" });
+  await panel.getByLabel("Campaign template").selectOption("sale-fixture");
+  await panel.getByRole("button", { name: /HJ22 LSK · Vansco 333 Showroom/ }).click();
+  expect(calls).toBe(0);
+  await panel.getByRole("button", { name: "LOAD DEALERKIT IMAGES", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Image 1 Selected" })).toBeVisible();
+  expect(calls).toBe(1);
+  await page.getByRole("button", { name: "Image 2", exact: true }).click();
+  await page.reload();
+  const job = await page.evaluate(key => JSON.parse(localStorage.getItem(key)).jobs[0], key);
+  expect(job.location).toBe("Vansco 333 Showroom");
+  expect(job.images).toEqual(["https://cdn.example/vehicle-found.jpg", "https://cdn.example/vehicle-second.jpg"]);
+  expect(job.selectedImage).toBe("https://cdn.example/vehicle-second.jpg");
+  await page.route("**/api/dealerkit-images?*", route => route.fulfill({
+    status: 404, json: { error: "No exact DealerKit match. Upload Image or enter a Vehicle URL." },
+  }));
+  await panel.getByRole("button", { name: "LOAD DEALERKIT IMAGES", exact: true }).click();
+  await expect(page.getByText("No exact DealerKit match. Upload Image or enter a Vehicle URL.", { exact: true })).toBeVisible();
+  expect((await page.evaluate(key => JSON.parse(localStorage.getItem(key)).jobs[0], key)).selectedImage).toBe(job.selectedImage);
+  await expect(panel.getByLabel("Upload Image", { exact: true })).toBeEnabled();
+  await expect(panel.getByRole("button", { name: "Load Images From URL" })).toBeEnabled();
+  expect(errors).toEqual([]);
+});
+
+test("master font/width calibration and individual price position persist independently", async ({ page }) => {
+  const errors = await setup(page);
+  await importVehicles(page);
+  const panel = page.getByRole("region", { name: "Vansco Sales Campaign" });
+  await panel.getByLabel("Campaign template").selectOption("sale-fixture");
+  await panel.getByRole("button", { name: /HJ22 LSK · Vansco 333 Showroom/ }).click();
+  await panel.getByLabel("Upload Image", { exact: true }).setInputFiles({ name: "stock.png", mimeType: "image/png", buffer: png });
+  await expect(page.getByRole("button", { name: "Image 1 Selected" })).toBeVisible();
+  await panel.getByText("Advanced campaign price defaults", { exact: true }).click();
+  await panel.getByLabel("NOW width percent", { exact: true }).fill("115");
+  await panel.getByLabel("WAS width percent", { exact: true }).fill("110");
+  await panel.getByLabel("SAVE font family", { exact: true }).selectOption("Archivo Black|400");
+  const controls = page.locator(".price-controls");
+  await controls.getByText("Advanced price position", { exact: true }).click();
+  await controls.getByLabel("X offset (px)", { exact: true }).fill("24");
+  await controls.getByLabel("Y offset (px)", { exact: true }).fill("-16");
+  await page.getByRole("button", { name: "Move NOW right 2 pixels" }).click();
+  await expect.poll(() => page.evaluate(() => document.fonts.check('400 72px "Archivo Black"'))).toBe(true);
+  const before = await page.evaluate(key => JSON.parse(localStorage.getItem(key)), key);
+  expect(before.jobs[0].priceOffsets.nowPrice).toEqual({ x: 26, y: -16 });
+  expect(before.priceLayout.nowPrice.x).toBe(215);
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export PNG Only", exact: true }).click();
+  await assertPng(await downloadPromise);
+  await page.screenshot({ path: "test-results/price-typography.png", fullPage: true });
+  await page.reload();
+  const restored = await page.evaluate(key => JSON.parse(localStorage.getItem(key)), key);
+  expect(restored.priceLayout).toEqual(before.priceLayout);
+  expect(restored.priceLayout.savePrice.fontFamily).toBe("Archivo Black");
+  expect(restored.priceLayout.nowPrice.widthScale).toBe(1.15);
+  expect(restored.jobs[0].priceOffsets.nowPrice).toEqual({ x: 26, y: -16 });
+  await panel.getByRole("button", { name: /AA22 AAA · Vansco/ }).click();
+  expect((await page.evaluate(key => JSON.parse(localStorage.getItem(key)).jobs[1], key)).priceOffsets.nowPrice).toEqual({ x: 0, y: 0 });
+  await panel.getByRole("button", { name: /HJ22 LSK · Vansco/ }).click();
+  expect((await page.evaluate(key => JSON.parse(localStorage.getItem(key)).jobs[0], key)).priceOffsets.nowPrice).toEqual({ x: 26, y: -16 });
+  await page.getByRole("button", { name: "Reset Price Position" }).click();
+  const reset = await page.evaluate(key => JSON.parse(localStorage.getItem(key)), key);
+  expect(reset.jobs[0].priceOffsets.nowPrice).toEqual({ x: 0, y: 0 });
+  expect(reset.priceLayout).toEqual(before.priceLayout);
+  expect(errors).toEqual([]);
+});
+
+test("removing active custom campaign template selects another valid template", async ({ page }) => {
+  const errors = await setup(page);
+  await importVehicles(page);
+  const panel = page.getByRole("region", { name: "Vansco Sales Campaign" });
+  await panel.getByLabel("Campaign template").selectOption("sale-fixture");
+  await panel.getByRole("button", { name: /HJ22 LSK · Vansco/ }).click();
+  page.on("dialog", dialog => dialog.accept());
+  await page.getByRole("button", { name: "Remove Sale Fixture", exact: true }).last().click();
+  await expect(panel.getByLabel("Campaign template")).toHaveValue("van-finance");
+  await page.reload();
+  await expect(panel.getByLabel("Campaign template")).toHaveValue("van-finance");
   expect(errors).toEqual([]);
 });

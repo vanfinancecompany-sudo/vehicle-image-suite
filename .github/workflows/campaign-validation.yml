@@ -15,23 +15,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Inspect public Vansco stock markup
-        continue-on-error: true
-        run: |
-          node --input-type=module <<'JS'
-          for (const path of ["/all-stock/", "/sitemap/", "/sitemap.xml"]) {
-            try {
-              const response = await fetch("https://www.vansco.co.uk" + path, { headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36" }, signal: AbortSignal.timeout(12000) });
-              const html = await response.text();
-              console.log("STOCK_INSPECT", path, response.status, response.url);
-              console.log("FORMS", (html.match(/<form\b[\s\S]*?<\/form>/gi) || []).map(x => x.slice(0, 15000)).join("\n").slice(0, 30000));
-              console.log("SCRIPTS", (html.match(/<script\b[^>]*src[^>]*>/gi) || []).join("\n"));
-              console.log("DATA", [...html.matchAll(/.{0,160}(?:registration|Registration|dealerkit|stockApi|StockAPI|api\.|RegNo|RegNumber|stockData).{0,220}/g)].map(x=>x[0]).slice(0,60).join("\n"));
-              console.log("LINKS", (html.match(/href=["'][^"']*(?:vehicle-details|all-stock)[^"']*["']/gi)||[]).slice(0,8).join("\n"));
-            } catch (error) { console.log("STOCK_INSPECT_ERROR", path, error.message); }
-          }
-          JS
-      - run: npm ci
+      - run: npm install
       - name: Lockfile for review
         run: node -e "console.log('LOCKFILE_START'); console.log(JSON.stringify(JSON.parse(require('fs').readFileSync('package-lock.json','utf8')))); console.log('LOCKFILE_END')"
       - run: npm run lint

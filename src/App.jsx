@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 import "@fontsource/anton/latin-400.css";
+import "@fontsource/league-spartan/latin-800.css";
+import "@fontsource/league-spartan/latin-900.css";
+import "@fontsource/archivo-black/latin-400.css";
 import SalesCampaignPanel, { DynamicPriceControls } from "./campaign/SalesCampaignPanel.jsx";
 import VehicleThumbnail from "./campaign/VehicleThumbnail.jsx";
 import useCampaign from "./campaign/useCampaign.js";
@@ -405,7 +408,7 @@ function App() {
       const [image, overlay] = await Promise.all([
         selectedImage ? loadVehicleImage(selectedImage) : Promise.resolve(null),
         loadCanvasImage(activeTemplate.filePath),
-        activeJob ? ensurePriceFont() : Promise.resolve(),
+        activeJob ? ensurePriceFont(campaign.priceLayout) : Promise.resolve(),
       ]);
       if (sequence !== drawSequence.current) return;
       drawComposite(canvas.getContext("2d"), image, overlay, activeTemplate, imageTransform,
@@ -488,6 +491,34 @@ function App() {
     } finally {
       setIsExtracting(false);
     }
+  };
+
+  const loadDealerKitImages = async () => {
+    if (!activeJob || busy) return;
+    setIsExtracting(true);
+    setError("");
+    setStatus("Loading DealerKit images for " + activeJob.registration + "…");
+    try {
+      const response = await fetch("/api/dealerkit-images?registration=" + encodeURIComponent(activeJob.registration));
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "DealerKit images could not be loaded.");
+      const registration = activeJob.registration.toUpperCase().replace(/[\s-]/g, "");
+      if (!data.ok || data.registration !== registration || !data.images?.length) {
+        throw new Error("No exact DealerKit vehicle/image result. Use Upload Image or Load Images From URL.");
+      }
+      const gallery = data.images.map(image => image.url);
+      const oldGallery = activeJob.images.filter(image => !isUpload(image));
+      const sameGallery = JSON.stringify(oldGallery) === JSON.stringify(gallery);
+      const selectedImage = gallery.includes(activeJob.selectedImage) || isUpload(activeJob.selectedImage)
+        ? activeJob.selectedImage : gallery[0];
+      if (onJobChange({
+        images: [...gallery, ...activeJob.images.filter(isUpload)], selectedImage,
+        transform: sameGallery || selectedImage === activeJob.selectedImage ? activeJob.transform : { ...DEFAULT_TRANSFORM },
+      })) setStatus(gallery.length + " DealerKit images loaded for " + activeJob.registration + ".");
+    } catch (error) {
+      setError(error.message);
+      setStatus("Existing photos kept. Upload Image and Load Images From URL remain available.");
+    } finally { setIsExtracting(false); }
   };
 
   const downloadZip = () => {
@@ -614,7 +645,7 @@ function App() {
     const [vehicleImage, templateImage] = await Promise.all([
       loadVehicleImage(imageUrl),
       loadCanvasImage(activeTemplate.filePath),
-      activeJob ? ensurePriceFont() : Promise.resolve(),
+      activeJob ? ensurePriceFont(campaign.priceLayout) : Promise.resolve(),
     ]);
     const canvas = document.createElement("canvas");
     canvas.width = activeTemplate.width;
@@ -686,7 +717,7 @@ function App() {
       setTemplates(remaining);
       if (normalTemplateId === templateId) setNormalTemplateId(remaining[0]?.id || "");
       if (campaign.templateId === templateId) {
-        updateCampaign(current => ({ ...current, templateId: "" }));
+        updateCampaign(current => ({ ...current, templateId: remaining[0]?.id || "" }));
       }
     } catch { setError("Template removal could not be saved. Free browser storage and try again."); }
   };
@@ -819,7 +850,7 @@ function App() {
 
         <SalesCampaignPanel campaign={campaign} updateCampaign={updateCampaign} storageError={storageError}
           templates={templates} activeJob={activeJob} onSelect={selectJob} onExit={exitCampaign}
-          onLoadImages={() => extractImages(activeJob.vehicleUrl)} onUploadImage={uploadCampaignImage}
+          onLoadImages={() => extractImages(activeJob.vehicleUrl)} onDealerKitImages={loadDealerKitImages} onUploadImage={uploadCampaignImage}
           onJobChange={onJobChange} busy={busy} onError={setError} onStatus={setStatus} />
         </div>
         <div className="panel editor-panel">

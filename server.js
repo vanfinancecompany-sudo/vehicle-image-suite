@@ -1,4 +1,5 @@
 import express from "express";
+import dealerKitImagesHandler from "./api/dealerkit-images.js";
 import cors from "cors";
 import fetch from "node-fetch";
 import archiver from "archiver";
@@ -10,6 +11,7 @@ const app = express();
 app.use(cors());
 
 app.get(["/api/extract", "/extract"], extractHandler);
+app.get("/api/dealerkit-images", dealerKitImagesHandler);
 
 app.get(["/api/image", "/image-proxy"], async (req, res) => {
   const imageUrl = req.query.url;

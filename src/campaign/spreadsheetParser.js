@@ -1,9 +1,8 @@
-import * as XLSX from "xlsx";
 import { createJob } from "./campaignModel.js";
 
 const aliases = {
   registration: ["reg", "registration"],
-  location: ["location", "site", "branch"],
+  location: ["sales location", "location", "site", "branch"],
   wasPrice: ["retail price", "was", "was price", "old price"],
   nowPrice: ["new sales price", "now", "now price", "sale price"],
   savePrice: ["discount", "save", "saving"],
@@ -29,6 +28,7 @@ export function parseRows(rows) {
 }
 
 export async function parseSpreadsheet(file) {
+  const XLSX = await import("xlsx");
   const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellText: true });
   for (const name of workbook.SheetNames) {
     const sheet = workbook.Sheets[name];
