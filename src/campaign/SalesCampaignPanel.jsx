@@ -2,6 +2,7 @@ import { useState } from "react";
 import { createJob, formatPrice, newCampaign, PRICE_FIELDS } from "./campaignModel.js";
 import { parseSpreadsheet } from "./spreadsheetParser.js";
 import { PRICE_FONTS, pricePosition } from "./priceRenderer.js";
+import { PRICE_DEFAULTS_REVISION } from "./priceDefaults.js";
 
 const label = field => field.replace("Price", "").toUpperCase();
 
@@ -78,7 +79,8 @@ export default function SalesCampaignPanel({
     (filter === "All" || (filter === "Done" ? job.done : !job.done)) &&
     job.registration.replace(/[\s-]/g, "").includes(search.toUpperCase().replace(/[\s-]/g, "")));
   const disabled = busy || importing;
-  const change = patch => updateCampaign(current => ({ ...current, ...patch }));
+  const change = patch => updateCampaign(current => ({ ...current, ...patch,
+    ...(patch.priceLayout ? { priceDefaultsRevision: PRICE_DEFAULTS_REVISION } : {}) }));
   const importFile = async file => {
     if (!file) return;
     setImporting(true);
@@ -154,7 +156,7 @@ export default function SalesCampaignPanel({
         <VehicleForm disabled={disabled} onSave={job => updateCampaign(current => ({ ...current, jobs: [...current.jobs, job] }))} />
       </details>
       <details><summary>Advanced campaign price defaults</summary>
-        <p>Calibrate against your master PNG once. All values are left-anchored. Vehicle offsets remain independent.</p>
+        <p>Calibrate against your master PNG once. All values are left-anchored. Vehicle offsets remain independent. SAVE stays within its panel safe area; long values fit horizontally.</p>
         {PRICE_FIELDS.map(field => <fieldset key={field} aria-label={label(field) + " defaults"}><legend>{label(field)}</legend>
           {["x", "y", "size"].map(axis => <label key={axis}>{axis === "size" ? "Font size" : axis.toUpperCase()} (px)
             <input type="number" value={pricePosition(campaign.priceLayout, field)[axis]}

@@ -95,8 +95,8 @@ export function drawPrices(ctx, job, layout) {
       ctx.lineWidth = Math.max(2, box.position.size * 0.075);
       ctx.beginPath();
       const width = box.width / box.position.widthScale;
-      ctx.moveTo(-2, box.height * 0.72);
-      ctx.lineTo(width + 2, box.height * 0.28);
+      ctx.moveTo(-8, box.height * 0.8);
+      ctx.lineTo(width + 6, box.height * 0.2);
       ctx.stroke();
     }
     ctx.restore();

@@ -92,8 +92,8 @@ test("font widths expand from the left anchor and WAS stroke uses the same group
   drawPrices(ctx, job, { ...wider, wasPrice: { ...DEFAULT_PRICE_LAYOUT.wasPrice, widthScale: 1.1 } });
   assert.deepEqual(calls[0], ["translate", 36, DEFAULT_PRICE_LAYOUT.wasPrice.y - 4]);
   assert.deepEqual(calls[1], ["scale", 1.1, 1]);
-  assert.deepEqual(calls.find(call => call[0] === "start"), ["start", -2, 42 * 0.72]);
-  assert.deepEqual(calls.find(call => call[0] === "end"), ["end", ctx.measureText(formatPrice(job.wasPrice)).width + 2, 42 * 0.28]);
+  assert.deepEqual(calls.find(call => call[0] === "start"), ["start", -8, 42 * 0.8]);
+  assert.deepEqual(calls.find(call => call[0] === "end"), ["end", ctx.measureText(formatPrice(job.wasPrice)).width + 6, 42 * 0.2]);
   assert.equal(ctx.lineWidth, DEFAULT_PRICE_LAYOUT.wasPrice.size * 0.075);
   assert.ok(calls.filter(call => call[0] === "text").every(call => call[1] === "left"));
 });

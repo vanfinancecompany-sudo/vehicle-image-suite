@@ -81,7 +81,7 @@ test("WAS line uses actual amount width inside the same scaled, moved group", ()
   drawPrices(ctx, vehicle);
   assert.deepEqual(calls[0], ["translate", box.x, box.y]);
   assert.deepEqual(calls[1], ["scale", box.position.widthScale, 1]);
-  assert.deepEqual(calls.find(v => v[0] === "end"), ["end", box.width / box.position.widthScale + 2, box.height * 0.28]);
+  assert.deepEqual(calls.find(v => v[0] === "end"), ["end", box.width / box.position.widthScale + 6, box.height * 0.2]);
 });
 test("untouched League Spartan defaults migrate once, keeping every job/offset", () => {
   const campaign = { ...newCampaign(), jobs: [job()], priceLayout: oldLayout() };
@@ -108,4 +108,9 @@ test("manual font/position/width choices and partial calibrations never migrate"
   }
   const partial = { ...newCampaign(), jobs: [job()], priceLayout: { nowPrice: { x: 230 } } };
   assert.equal(migrateCampaignPriceDefaults(partial), partial);
+});
+
+test("an explicit current calibration marker protects intentional old-font choices", () => {
+  const campaign = { ...newCampaign(), priceLayout: oldLayout(), priceDefaultsRevision: 2 };
+  assert.equal(migrateCampaignPriceDefaults(campaign), campaign);
 });

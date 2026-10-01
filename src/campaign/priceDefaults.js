@@ -12,9 +12,9 @@ export const PRICE_FONTS = [
 // The SAVE rectangle excludes its fixed label, frame and right-edge artwork.
 export const SAVE_SAFE_AREA = { left: 688, top: 39, right: 925, bottom: 86 };
 export const DEFAULT_PRICE_LAYOUT = {
-  wasPrice: { x: 30, y: 643, size: 48, color: "#e2e2e2", fontFamily: "Noto Sans", fontWeight: 900, widthScale: 0.9 },
-  nowPrice: { x: 215, y: 628, size: 72, color: "#111111", fontFamily: "Noto Sans", fontWeight: 900, widthScale: 0.86 },
-  savePrice: { x: 695, y: 40, size: 52, color: "#ffffff", fontFamily: "Noto Sans", fontWeight: 900, widthScale: 1.2 },
+  wasPrice: { x: 30, y: 643, size: 48, color: "#e2e2e2", fontFamily: "Noto Sans", fontWeight: 900, widthScale: 0.86 },
+  nowPrice: { x: 215, y: 628, size: 72, color: "#111111", fontFamily: "Noto Sans", fontWeight: 900, widthScale: 0.88 },
+  savePrice: { x: 695, y: 40, size: 52, color: "#ffffff", fontFamily: "Noto Sans", fontWeight: 900, widthScale: 1.3 },
 };
 
 export const PRICE_DEFAULTS_REVISION = 2;
