@@ -10,8 +10,8 @@ export const PRICE_FONTS = [
 // Ink-top and fixed left-anchor coordinates on the 960 × 720 reference.
 // Per-field calibration belongs to the campaign, never to individual vehicle offsets.
 export const DEFAULT_PRICE_LAYOUT = {
-  wasPrice: { x: 30, y: 643, size: 54, color: "#e2e2e2", fontFamily: "League Spartan", fontWeight: 900, widthScale: 1 },
-  nowPrice: { x: 215, y: 628, size: 72, color: "#111111", fontFamily: "League Spartan", fontWeight: 900, widthScale: 1.05 },
+  wasPrice: { x: 30, y: 643, size: 54, color: "#e2e2e2", fontFamily: "League Spartan", fontWeight: 900, widthScale: 0.82 },
+  nowPrice: { x: 215, y: 628, size: 72, color: "#111111", fontFamily: "League Spartan", fontWeight: 900, widthScale: 0.95 },
   savePrice: { x: 695, y: 43, size: 72, color: "#ffffff", fontFamily: "League Spartan", fontWeight: 900, widthScale: 1.05 },
 };
 

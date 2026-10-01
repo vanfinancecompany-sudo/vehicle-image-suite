@@ -214,6 +214,30 @@ test("master font/width calibration and individual price position persist indepe
   await expect(page.getByRole("button", { name: "Image 1 Selected" })).toBeVisible();
   await panel.getByText("Advanced campaign price defaults", { exact: true }).click();
   await expect.poll(() => page.evaluate(() => window.priceDraws.length)).toBeGreaterThan(0);
+  const typography = await page.evaluate(async key => {
+    const { drawPrices, priceGeometry, ensurePriceFont } = await import("/src/campaign/priceRenderer.js");
+    const campaign = JSON.parse(localStorage.getItem(key));
+    const job = campaign.jobs[0];
+    await ensurePriceFont(campaign.priceLayout);
+    const canvas = document.createElement("canvas");
+    canvas.width = 960; canvas.height = 720;
+    const ctx = canvas.getContext("2d");
+    const layout = { nowPrice: { widthScale: 1 } };
+    const normal = priceGeometry(ctx, job, "nowPrice", layout);
+    const wide = priceGeometry(ctx, job, "nowPrice", { nowPrice: { widthScale: 1.2 } });
+    drawPrices(ctx, job);
+    const was = priceGeometry(ctx, job, "wasPrice");
+    const now = priceGeometry(ctx, job, "nowPrice");
+    // Inspect the real bundled font, not only stubbed canvas metrics.
+    return { normal, wide, was, now };
+  }, key);
+  expect(typography.wide.x).toBe(typography.normal.x);
+  expect(typography.wide.y).toBe(typography.normal.y);
+  expect(typography.wide.height).toBe(typography.normal.height);
+  expect(typography.wide.width).toBeCloseTo(typography.normal.width * 1.2, 5);
+  expect(typography.was.x + typography.was.width).toBeLessThan(195);
+  expect(typography.now.x + typography.now.width).toBeLessThan(470);
+  await page.getByLabel("Template editor canvas").screenshot({ path: "test-results/price-defaults.png" });
   console.log("PRICE_CANVAS_PREVIEW:" + await page.getByLabel("Template editor canvas").evaluate(canvas => canvas.toDataURL()));
   await panel.getByLabel("NOW width percent", { exact: true }).fill("115");
   await panel.getByLabel("WAS width percent", { exact: true }).fill("110");
