@@ -165,6 +165,7 @@ test("remove in either template list, cancel safely, persist defaults hidden, re
   await expect(page.getByText("2 templates", { exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByRole("button", { name: "Remove Van Finance", exact: true })).toHaveCount(2);
+  await expect(page.getByRole("button", { name: "Remove Rent2Buy", exact: true })).toHaveCount(2);
   expect(errors).toEqual([]);
 });
 
@@ -238,7 +239,6 @@ test("master font/width calibration and individual price position persist indepe
   expect(typography.was.x + typography.was.width).toBeLessThan(195);
   expect(typography.now.x + typography.now.width).toBeLessThan(470);
   await page.getByLabel("Template editor canvas").screenshot({ path: "test-results/price-defaults.png" });
-  console.log("PRICE_CANVAS_PREVIEW:" + await page.getByLabel("Template editor canvas").evaluate(canvas => canvas.toDataURL()));
   await panel.getByLabel("NOW width percent", { exact: true }).fill("115");
   await panel.getByLabel("WAS width percent", { exact: true }).fill("110");
   await panel.getByLabel("SAVE font family", { exact: true }).selectOption("Archivo Black|400");
@@ -253,7 +253,11 @@ test("master font/width calibration and individual price position persist indepe
   expect(before.priceLayout.nowPrice.x).toBe(215);
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export PNG Only", exact: true }).click();
-  await assertPng(await downloadPromise);
+  const download = await downloadPromise;
+  await assertPng(download);
+  const exported = await readFile(await download.path());
+  const editor = await page.getByLabel("Template editor canvas").evaluate(canvas => canvas.toDataURL());
+  expect(exported.equals(Buffer.from(editor.split(",")[1], "base64"))).toBe(true);
   await page.screenshot({ path: "test-results/price-typography.png", fullPage: true });
   await page.reload();
   const restored = await page.evaluate(key => JSON.parse(localStorage.getItem(key)), key);
@@ -280,6 +284,13 @@ test("removing active custom campaign template selects another valid template", 
   await panel.getByRole("button", { name: /HJ22 LSK · Vansco/ }).click();
   page.on("dialog", dialog => dialog.accept());
   await page.getByRole("button", { name: "Remove Sale Fixture", exact: true }).last().click();
+  await expect(panel.getByLabel("Campaign template")).toHaveValue("van-finance");
+  await page.reload();
+  await expect(panel.getByLabel("Campaign template")).toHaveValue("van-finance");
+  await page.getByRole("button", { name: "Remove Van Finance", exact: true }).last().click();
+  await page.getByRole("button", { name: "Remove Rent2Buy", exact: true }).last().click();
+  await expect(panel.getByLabel("Campaign template")).toHaveValue("");
+  await page.getByRole("button", { name: "Restore Default Templates", exact: true }).last().click();
   await expect(panel.getByLabel("Campaign template")).toHaveValue("van-finance");
   await page.reload();
   await expect(panel.getByLabel("Campaign template")).toHaveValue("van-finance");
