@@ -2,7 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "git": {
     "deploymentEnabled": {
-      "feature/vansco-sale-campaign-workflow": true
+      "feature/vansco-sale-campaign-workflow": false
     }
   }
 }
