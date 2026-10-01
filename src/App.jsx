@@ -12,7 +12,9 @@ import VehicleThumbnail from "./campaign/VehicleThumbnail.jsx";
 import useCampaign from "./campaign/useCampaign.js";
 import { campaignFilename, DEFAULT_TRANSFORM, nextUnfinished } from "./campaign/campaignModel.js";
 import { isUpload, readImage, storeImage, removeStoredImage } from "./campaign/campaignStorage.js";
-import { drawPrices, ensurePriceFont } from "./campaign/priceRenderer.js";
+import { ensurePriceFont } from "./campaign/priceRenderer.js";
+
+import { drawComposite } from "./canvasComposite.js";
 
 const CONTROL_CENTRE_URL =
   import.meta.env.VITE_CONTROL_CENTRE_URL ||
@@ -173,35 +175,6 @@ function readCanvasImage(src, useCrossOrigin = false) {
     image.onerror = () => reject(new Error("Could not load image."));
     image.src = src;
   });
-}
-
-function drawComposite(ctx, vehicleImage, templateImage, template, transform, job, priceLayout) {
-  const { width, height } = template;
-  ctx.clearRect(0, 0, width, height);
-  ctx.fillStyle = "#111827";
-  ctx.fillRect(0, 0, width, height);
-
-  if (vehicleImage) {
-    const coverScale = Math.max(width / vehicleImage.naturalWidth, height / vehicleImage.naturalHeight);
-    const drawWidth = vehicleImage.naturalWidth * coverScale * transform.scale;
-    const drawHeight = vehicleImage.naturalHeight * coverScale * transform.scale;
-    const x = (width - drawWidth) / 2 + transform.x;
-    const y = (height - drawHeight) / 2 + transform.y;
-    ctx.drawImage(vehicleImage, x, y, drawWidth, drawHeight);
-  } else {
-    ctx.fillStyle = "#1f2937";
-    ctx.fillRect(0, 0, width, height);
-    ctx.fillStyle = "#94a3b8";
-    ctx.font = "700 34px Inter, Arial, sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText("Select a vehicle image", width / 2, height / 2);
-    ctx.textAlign = "left";
-  }
-
-  if (templateImage) {
-    ctx.drawImage(templateImage, 0, 0, width, height);
-  }
-  if (job) drawPrices(ctx, job, priceLayout);
 }
 
 function canvasToPngBlob(canvas) {

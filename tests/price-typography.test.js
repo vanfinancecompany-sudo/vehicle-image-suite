@@ -7,7 +7,7 @@ import { createJob, newCampaign, PRICE_FIELDS } from "../src/campaign/campaignMo
 
 function context() {
   return { font: "", save() {}, restore() {}, translate() {}, scale() {},
-    fillText() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {},
+    fillText() {}, strokeText() {}, rect() {}, clip() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {},
     measureText(text) {
       const size = parseFloat(this.font.split(" ")[1]);
       return { width: text.length * size * 0.5, actualBoundingBoxLeft: 2,
@@ -35,9 +35,12 @@ test("every price keeps its ink-left anchor and height while width changes", () 
     const wider = priceGeometry(ctx, vehicle, field, { [field]: { widthScale: 1 } });
     assert.equal(wider.x, normal.x); assert.equal(wider.y, normal.y);
     assert.equal(wider.height, normal.height);
-    assert.equal(wider.width, ctx.measureText(wider.text).width);
+    if (field === "nowPrice") {
+      assert.ok(wider.width < ctx.measureText(wider.text).width);
+      assert.ok(wider.strokeWidth > 0);
+    } else assert.equal(wider.width, ctx.measureText(wider.text).width);
     assert.equal(normal.width, wider.width * 0.8);
-    assert.equal(wider.bearing, 2);
+    assert.equal(wider.bearing, field === "nowPrice" ? 2 + wider.strokeWidth / 2 : 2);
     assert.equal(wider.fitted, false);
   }
 });
@@ -113,4 +116,34 @@ test("manual font/position/width choices and partial calibrations never migrate"
 test("an explicit current calibration marker protects intentional old-font choices", () => {
   const campaign = { ...newCampaign(), priceLayout: oldLayout(), priceDefaultsRevision: 2 };
   assert.equal(migrateCampaignPriceDefaults(campaign), campaign);
+});
+
+test("NOW tightens real glyph advances and thickens only NOW without moving its anchor", () => {
+  const ctx = context(), vehicle = job(), calls = [];
+  ctx.strokeText = (text, x, y) => calls.push({ text, x, y, width: ctx.lineWidth });
+  const box = priceGeometry(ctx, vehicle, "nowPrice");
+  assert.equal(box.x, DEFAULT_PRICE_LAYOUT.nowPrice.x);
+  assert.equal(box.y, DEFAULT_PRICE_LAYOUT.nowPrice.y);
+  assert.ok(box.width < ctx.measureText(box.text).width * box.position.widthScale);
+  assert.ok(box.glyphs[1].advance < ctx.measureText("£").width);
+  drawPrices(ctx, vehicle);
+  assert.equal(calls.length, Array.from(box.text).length);
+  assert.ok(calls.every(call => call.width === 0.9));
+  assert.equal(priceGeometry(ctx, vehicle, "wasPrice").glyphs, undefined);
+  assert.equal(priceGeometry(ctx, vehicle, "savePrice").glyphs, undefined);
+});
+
+test("SAVE alone has a small hard shadow clipped to the unchanged safe area", () => {
+  const ctx = context(), vehicle = job(), states = [], draws = [], clips = [];
+  ctx.save = () => states.push({ shadowColor: ctx.shadowColor, shadowBlur: ctx.shadowBlur,
+    shadowOffsetX: ctx.shadowOffsetX, shadowOffsetY: ctx.shadowOffsetY });
+  ctx.restore = () => Object.assign(ctx, states.pop());
+  ctx.rect = (...bounds) => clips.push(bounds);
+  ctx.fillText = text => draws.push({ text, color: ctx.shadowColor,
+    blur: ctx.shadowBlur, x: ctx.shadowOffsetX, y: ctx.shadowOffsetY });
+  drawPrices(ctx, vehicle);
+  assert.ok(draws.filter(draw => draw.text !== "£1,500").every(draw => !draw.color));
+  assert.deepEqual(draws.find(draw => draw.text === "£1,500"),
+    { text: "£1,500", color: "rgba(0, 0, 0, 0.38)", blur: 0, x: 1, y: 1.5 });
+  assert.deepEqual(clips, [[688, 39, 237, 47]]);
 });

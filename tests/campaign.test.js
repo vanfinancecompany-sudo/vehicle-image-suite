@@ -72,9 +72,10 @@ test("advance wraps to the next unfinished job, and keeps last job if all done",
 test("font widths expand from the left anchor and WAS stroke uses the same group transform", () => {
   const calls = [];
   const ctx = {
-    save() {}, restore() {}, beginPath() {}, stroke() {},
+    save() {}, restore() {}, beginPath() {}, stroke() { calls.push(["strokeWidth", this.lineWidth]); },
     translate(...args) { calls.push(["translate", ...args]); },
     scale(...args) { calls.push(["scale", ...args]); },
+    strokeText() {}, rect() {}, clip() {},
     fillText(...args) { calls.push(["text", this.textAlign, ...args]); },
     moveTo(...args) { calls.push(["start", ...args]); }, lineTo(...args) { calls.push(["end", ...args]); },
     measureText(text) { return { width: text.length * 15, actualBoundingBoxAscent: 40, actualBoundingBoxDescent: 2 }; },
@@ -84,7 +85,8 @@ test("font widths expand from the left anchor and WAS stroke uses the same group
   const wider = { ...DEFAULT_PRICE_LAYOUT, nowPrice: { ...DEFAULT_PRICE_LAYOUT.nowPrice, widthScale: 1.2 } };
   const scaled = priceGeometry(ctx, job, "nowPrice", wider);
   assert.equal(original.x, scaled.x);
-  assert.equal(scaled.width, ctx.measureText(formatPrice(job.nowPrice)).width * 1.2);
+  assert.equal(scaled.width, original.width / original.position.widthScale * 1.2);
+  assert.ok(scaled.width < ctx.measureText(formatPrice(job.nowPrice)).width * 1.2);
   assert.equal(scaled.height, original.height);
   job.nowPrice.value = 14995;
   assert.equal(priceGeometry(ctx, job, "nowPrice", wider).x, scaled.x);
@@ -94,7 +96,7 @@ test("font widths expand from the left anchor and WAS stroke uses the same group
   assert.deepEqual(calls[1], ["scale", 1.1, 1]);
   assert.deepEqual(calls.find(call => call[0] === "start"), ["start", -8, 42 * 0.8]);
   assert.deepEqual(calls.find(call => call[0] === "end"), ["end", ctx.measureText(formatPrice(job.wasPrice)).width + 6, 42 * 0.2]);
-  assert.equal(ctx.lineWidth, DEFAULT_PRICE_LAYOUT.wasPrice.size * 0.075);
+  assert.deepEqual(calls.find(call => call[0] === "strokeWidth"), ["strokeWidth", DEFAULT_PRICE_LAYOUT.wasPrice.size * 0.075]);
   assert.ok(calls.filter(call => call[0] === "text").every(call => call[1] === "left"));
 });
 
