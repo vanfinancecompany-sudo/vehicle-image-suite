@@ -212,6 +212,8 @@ test("master font/width calibration and individual price position persist indepe
   await panel.getByLabel("Upload Image", { exact: true }).setInputFiles({ name: "stock.png", mimeType: "image/png", buffer: png });
   await expect(page.getByRole("button", { name: "Image 1 Selected" })).toBeVisible();
   await panel.getByText("Advanced campaign price defaults", { exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.priceDraws.length)).toBeGreaterThan(0);
+  console.log("PRICE_CANVAS_PREVIEW:" + await page.getByLabel("Template editor canvas").evaluate(canvas => canvas.toDataURL()));
   await panel.getByLabel("NOW width percent", { exact: true }).fill("115");
   await panel.getByLabel("WAS width percent", { exact: true }).fill("110");
   await panel.getByLabel("SAVE font family", { exact: true }).selectOption("Archivo Black|400");

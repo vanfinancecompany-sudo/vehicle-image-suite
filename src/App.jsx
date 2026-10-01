@@ -732,6 +732,9 @@ function App() {
       localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(restored));
       setTemplates(restored);
       if (!normalTemplateId) setNormalTemplateId(restored[0]?.id || "");
+      if (campaign.enabled && !campaign.templateId) {
+        updateCampaign(current => ({ ...current, templateId: restored[0]?.id || "" }));
+      }
     } catch { setError("Default templates could not be restored."); }
   };
 

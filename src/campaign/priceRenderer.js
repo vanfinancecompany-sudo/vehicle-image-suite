@@ -42,7 +42,7 @@ export async function ensurePriceFont(layout) {
   }));
 }
 
-function usePriceFont(ctx, position) {
+function applyPriceFont(ctx, position) {
   ctx.font = position.fontWeight + " " + position.size + 'px "' + position.fontFamily + '", Impact, "Arial Narrow", sans-serif';
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
@@ -52,7 +52,7 @@ export function priceGeometry(ctx, job, field, layout) {
   if (!job[field]) return null;
   const position = pricePosition(layout, field);
   const offset = job.priceOffsets[field] || { x: 0, y: 0 };
-  usePriceFont(ctx, position);
+  applyPriceFont(ctx, position);
   const text = formatPrice(job[field]);
   const metrics = ctx.measureText(text);
   const ascent = metrics.actualBoundingBoxAscent || position.size * 0.78;
