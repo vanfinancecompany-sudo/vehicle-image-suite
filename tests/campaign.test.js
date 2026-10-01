@@ -153,7 +153,7 @@ test("campaign font readiness waits for the chosen bundled font and permits retr
     await Promise.resolve();
     assert.equal(finished, false);
     resolveFont([]);
-    await assert.rejects(pending, /League Spartan is not ready/);
+    await assert.rejects(pending, /Noto Sans is not ready/);
     const retry = ensurePriceFont();
     resolveFont([{}]);
     await retry;

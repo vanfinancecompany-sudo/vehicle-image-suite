@@ -85,7 +85,7 @@ test("import, URL and manual photos, nudge, save/advance, restore after refresh 
   expect(before.priceOffsets.nowPrice.x).toBe(2);
   expect(before.selectedImage).toMatch(/^upload:/);
   await expect.poll(() => page.evaluate(() => window.priceDraws.length)).toBeGreaterThan(0);
-  expect(await page.evaluate(() => document.fonts.check('900 72px "League Spartan"'))).toBe(true);
+  expect(await page.evaluate(() => document.fonts.check('900 72px "Noto Sans"'))).toBe(true);
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "SAVE PNG & MARK DONE", exact: true }).click();
   const download = await downloadPromise;

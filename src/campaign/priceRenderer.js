@@ -1,22 +1,7 @@
 import { formatPrice, PRICE_FIELDS } from "./campaignModel.js";
 
-export const PRICE_FONTS = [
-  { family: "Arimo", weight: 700, label: "Arimo Bold / 700" },
-  { family: "Noto Sans", weight: 900, label: "Noto Sans Black / 900" },
-  { family: "Roboto", weight: 900, label: "Roboto Black / 900" },
-  { family: "League Spartan", weight: 900, label: "League Spartan Black / 900" },
-  { family: "League Spartan", weight: 800, label: "League Spartan ExtraBold / 800" },
-  { family: "Archivo Black", weight: 400, label: "Archivo Black" },
-  { family: "Anton", weight: 400, label: "Anton" },
-];
-
-// Ink-top and fixed left-anchor coordinates on the 960 × 720 reference.
-// Per-field calibration belongs to the campaign, never to individual vehicle offsets.
-export const DEFAULT_PRICE_LAYOUT = {
-  wasPrice: { x: 30, y: 643, size: 54, color: "#e2e2e2", fontFamily: "League Spartan", fontWeight: 900, widthScale: 0.82 },
-  nowPrice: { x: 215, y: 628, size: 72, color: "#111111", fontFamily: "League Spartan", fontWeight: 900, widthScale: 0.95 },
-  savePrice: { x: 695, y: 43, size: 72, color: "#ffffff", fontFamily: "League Spartan", fontWeight: 900, widthScale: 1.05 },
-};
+import { PRICE_FONTS, DEFAULT_PRICE_LAYOUT, SAVE_SAFE_AREA } from "./priceDefaults.js";
+export { PRICE_FONTS, DEFAULT_PRICE_LAYOUT } from "./priceDefaults.js";
 
 export function pricePosition(layout, field) {
   const value = { ...DEFAULT_PRICE_LAYOUT[field], ...(layout?.[field] || {}) };
@@ -55,18 +40,43 @@ export function priceGeometry(ctx, job, field, layout) {
   if (!job[field]) return null;
   const position = pricePosition(layout, field);
   const offset = job.priceOffsets[field] || { x: 0, y: 0 };
-  applyPriceFont(ctx, position);
   const text = formatPrice(job[field]);
-  const metrics = ctx.measureText(text);
-  const ascent = metrics.actualBoundingBoxAscent || position.size * 0.78;
-  const descent = metrics.actualBoundingBoxDescent || position.size * 0.04;
-  const bearing = metrics.actualBoundingBoxLeft || 0;
-  const inkWidth = metrics.actualBoundingBoxRight != null
-    ? bearing + metrics.actualBoundingBoxRight : metrics.width;
+  function measure(size) {
+    applyPriceFont(ctx, { ...position, size });
+    const metrics = ctx.measureText(text);
+    const ascent = metrics.actualBoundingBoxAscent || size * 0.78;
+    const descent = metrics.actualBoundingBoxDescent ?? size * 0.04;
+    const bearing = metrics.actualBoundingBoxLeft || 0;
+    const inkWidth = metrics.actualBoundingBoxRight != null
+      ? bearing + metrics.actualBoundingBoxRight : metrics.width;
+    return { bearing, ascent, inkWidth, height: ascent + descent };
+  }
+  let size = position.size;
+  let metrics = measure(size);
+  let widthScale = position.widthScale;
+  let x = position.x + offset.x, y = position.y + offset.y;
+  if (field === "savePrice") {
+    const area = SAVE_SAFE_AREA;
+    // Font height changes only if the requested height cannot fit at all.
+    // Normal values retain their full requested size. Long values fit horizontally.
+    if (metrics.height > area.bottom - area.top) {
+      size *= (area.bottom - area.top) / metrics.height;
+      metrics = measure(size);
+      // Canvas hinting can round the new ink height up by a pixel.
+      for (let tries = 0; tries < 4 && metrics.height > area.bottom - area.top; tries++) {
+        size -= 0.5; metrics = measure(size);
+      }
+    }
+    x = Math.min(area.right - 1, Math.max(area.left, x));
+    y = Math.min(area.bottom - metrics.height, Math.max(area.top, y));
+    widthScale = Math.min(widthScale, (area.right - x) / Math.max(1, metrics.inkWidth));
+  }
   return {
-    field, position, text, bearing, ascent,
-    x: position.x + offset.x, y: position.y + offset.y,
-    width: inkWidth * position.widthScale, height: ascent + descent,
+    field, position: { ...position, size, widthScale }, text,
+    bearing: metrics.bearing, ascent: metrics.ascent, x, y,
+    width: metrics.inkWidth * widthScale, height: metrics.height,
+    fitted: size !== position.size || widthScale !== position.widthScale ||
+      x !== position.x + offset.x || y !== position.y + offset.y,
   };
 }
 

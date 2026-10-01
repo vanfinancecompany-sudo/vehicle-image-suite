@@ -1,4 +1,5 @@
 import { newCampaign } from "./campaignModel.js";
+import { migrateCampaignPriceDefaults } from "./priceDefaults.js";
 
 export const CAMPAIGN_KEY = "vehicle-image-suite-sales-campaign";
 const DB_NAME = "vehicle-image-suite-campaign-images";
@@ -12,7 +13,7 @@ export function loadCampaign(storage = window.localStorage) {
         !Array.isArray(job.images))) {
     throw new Error("Saved campaign could not be read. Existing browser data has been preserved.");
   }
-  return campaign;
+  return migrateCampaignPriceDefaults(campaign);
 }
 
 export function saveCampaign(campaign, storage = window.localStorage) {

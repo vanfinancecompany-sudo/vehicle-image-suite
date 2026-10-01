@@ -15,9 +15,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install
-      - name: Lockfile for review
-        run: node -e "console.log('LOCKFILE_START'); console.log(JSON.stringify(JSON.parse(require('fs').readFileSync('package-lock.json','utf8')))); console.log('LOCKFILE_END')"
+      - run: npm ci
       - run: npm run lint
       - run: npm run test
       - run: npm run build
