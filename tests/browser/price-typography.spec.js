@@ -44,14 +44,13 @@ test("controlled price font audition uses only real locally loaded faces", async
   });
   expect(result.dataUrl).toMatch(/^data:image\/png;base64,/);
   await page.locator("canvas").screenshot({ path: "test-results/price-font-audition.png" });
-  console.log("FONT_AUDITION:" + result.dataUrl);
 });
 
 test("Noto default production fixture, SAVE containment and stable anchors with real fonts", async ({ page }) => {
   await page.goto("/");
   const result = await page.evaluate(async () => {
     const { renderPriceFixture } = await import("/tests/browser/fixtures/priceCanvas.js");
-    const { priceGeometry } = await import("/src/campaign/priceRenderer.js");
+    const { priceGeometry, drawPrices } = await import("/src/campaign/priceRenderer.js");
     const job = { wasPrice: { value: 14495 }, nowPrice: { value: 13995 }, savePrice: { value: 1500 },
       priceOffsets: { wasPrice: { x: 0, y: 0 }, nowPrice: { x: 0, y: 0 }, savePrice: { x: 0, y: 0 } } };
     const normal = await renderPriceFixture(job);
@@ -64,14 +63,38 @@ test("Noto default production fixture, SAVE containment and stable anchors with 
       normal: priceGeometry(ctx, job, field, { [field]: { widthScale: 0.8 } }),
       wide: priceGeometry(ctx, job, field, { [field]: { widthScale: 1 } }),
     }));
+    const rasterAnchors = ["wasPrice", "nowPrice", "savePrice"].map(field => {
+      return [0.8, 1].map(widthScale => {
+        const canvas = document.createElement("canvas");
+        canvas.width = 960; canvas.height = 720;
+        const ink = canvas.getContext("2d");
+        const isolated = { ...job, wasPrice: null, nowPrice: null, savePrice: null, [field]: job[field] };
+        drawPrices(ink, isolated, { [field]: { widthScale } });
+        const pixels = ink.getImageData(0, 0, 960, 720).data;
+        let left = 960, top = 720, bottom = 0;
+        for (let y = 0; y < 720; y++) for (let x = 0; x < 960; x++) {
+          const i = (y * 960 + x) * 4;
+          // Exclude the red WAS stroke; inspect the actual value's ink.
+          if (pixels[i + 3] > 20 && Math.abs(pixels[i] - pixels[i + 1]) < 2 &&
+              Math.abs(pixels[i + 1] - pixels[i + 2]) < 2) {
+            left = Math.min(left, x); top = Math.min(top, y); bottom = Math.max(bottom, y);
+          }
+        }
+        return { left, top, bottom };
+      });
+    });
     const long = await renderPriceFixture({ ...job, savePrice: { value: 10000 } });
     document.body.replaceChildren(normal.canvas);
-    return { boxes: normal.boxes, values, anchors, safeArea: normal.safeArea,
+    return { boxes: normal.boxes, values, anchors, rasterAnchors, safeArea: normal.safeArea,
       defaultPng: normal.canvas.toDataURL(), longPng: long.canvas.toDataURL() };
   });
   for (const { normal, wide } of result.anchors) {
     expect(wide.x).toBe(normal.x); expect(wide.y).toBe(normal.y);
     expect(wide.height).toBe(normal.height); expect(wide.width).toBeCloseTo(normal.width / 0.8, 6);
+  }
+  for (const [normal, wide] of result.rasterAnchors) {
+    expect(Math.abs(wide.left - normal.left)).toBeLessThanOrEqual(1);
+    expect(wide.top).toBe(normal.top); expect(wide.bottom).toBe(normal.bottom);
   }
   for (const { value, box } of result.values) {
     expect(box.x).toBe(695);
@@ -87,8 +110,6 @@ test("Noto default production fixture, SAVE containment and stable anchors with 
   expect(long.x + long.width).toBeCloseTo(result.safeArea.right, 6);
   await page.locator("canvas").screenshot({ path: "test-results/price-reference-defaults.png" });
   await test.info().attach("price-reference-long-save.png", { body: Buffer.from(result.longPng.split(",")[1], "base64"), contentType: "image/png" });
-  console.log("CALIBRATED_PRICE:" + result.defaultPng);
-  console.log("PRICE_BOXES:" + JSON.stringify(result.boxes));
 });
 
 test("untouched old default migration preserves offsets and subsequent manual calibration", async ({ page }) => {
