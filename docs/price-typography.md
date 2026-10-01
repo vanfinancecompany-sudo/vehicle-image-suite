@@ -34,3 +34,26 @@ new calibrations are revision-marked.
 Fixture sources: tests/browser/price-typography.spec.js and
 tests/browser/fixtures/priceCanvas.js. Generated screenshots appear in validation artifacts.
 The fixture labels/backdrop are test scaffolding; the existing customer PNG is unchanged.
+
+## Rendering polish
+
+SAVE alone has a crisp black shadow at 38% opacity, offset 1px right / 1.5px down,
+with zero blur. Both value and shadow are clipped to the existing SAVE safe area.
+Font, size, fitting and manual calibration are unchanged.
+
+NOW keeps its chosen bundled font and master size/width. Per-character advances retain
+pair kerning, then apply -1.08px tracking at the default 72px size. A 0.9px same-colour
+stroke adds a little weight. Both scale proportionally with font size. The complete
+ink bounds include the stroke, preserving the visible left anchor and user offsets.
+WAS rendering and strike-through are unchanged.
+
+The shared preview/export compositor masks the photograph to the PNG's largest connected
+transparent opening, including semi-transparent edges, excluding separate exterior margins
+and decorative holes. The mask is cached for each decoded template and canvas size.
+Normal footer templates retain their edge-connected photo opening. Existing full-canvas
+photo transforms are preserved; the mask affects only visibility, not drag/zoom positioning.
+
+tests/browser/polish.spec.js checks SAVE £350 / NOW £10,245, real ink density and anchor,
+shadow-only pixels, strict frame containment after drag/zoom, transform persistence and
+byte-identical editor/export PNGs. Deterministic screenshots use saleFrame.js as test
+scaffolding; the customer's approved overlay is not replaced.

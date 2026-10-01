@@ -59,7 +59,6 @@ test("SAVE shadow and tighter/heavier NOW use the production renderer and retain
   expect(result.box.x).toBe(695); expect(result.box.position.size).toBe(52);
   expect(result.shadow).toBeGreaterThan(0); expect(result.outside).toBe(0);
   await page.locator("canvas").screenshot({ path: "test-results/sale-polish-350-10245.png" });
-  console.log("POLISH_PREVIEW:" + result.png);
 });
 
 test("framed PNG clips photo after drag/zoom and export exactly matches editor pixels", async ({ page }) => {
@@ -107,10 +106,28 @@ test("framed PNG clips photo after drag/zoom and export exactly matches editor p
   const exported = await readFile(await download.path());
   const preview = await canvas.evaluate(canvas => canvas.toDataURL());
   expect(exported.equals(Buffer.from(preview.split(",")[1], "base64"))).toBe(true);
-  const margins = await canvas.evaluate(canvas => {
-    const ctx = canvas.getContext("2d");
-    return [[0, 0], [3, 200], [959, 200], [400, 715]].map(([x, y]) => Array.from(ctx.getImageData(x, y, 1, 1).data));
+  const containment = await canvas.evaluate(async canvas => {
+    const { saleFrame } = await import("/tests/browser/fixtures/saleFrame.js");
+    const { drawPrices } = await import("/src/campaign/priceRenderer.js");
+    const campaign = JSON.parse(localStorage.getItem("vehicle-image-suite-sales-campaign"));
+    const expected = document.createElement("canvas"); expected.width = 960; expected.height = 720;
+    const base = expected.getContext("2d"); base.fillStyle = "#111827"; base.fillRect(0, 0, 960, 720);
+    base.drawImage(saleFrame(), 0, 0); drawPrices(base, campaign.jobs[0], campaign.priceLayout);
+    const pixels = canvas.getContext("2d").getImageData(0, 0, 960, 720).data;
+    const reference = base.getImageData(0, 0, 960, 720).data;
+    let outsideDifferences = 0;
+    for (let y = 0; y < 720; y++) for (let x = 0; x < 960; x++) {
+      if (x >= 130 && x < 950 && y >= 96 && y < 592) continue;
+      const index = (y * 960 + x) * 4;
+      if ([0, 1, 2, 3].some(channel => pixels[index + channel] !== reference[index + channel])) outsideDifferences++;
+    }
+    return { outsideDifferences, margins: [[0, 0], [3, 200], [959, 200], [400, 715]].map(([x, y]) => {
+      const i = (y * 960 + x) * 4;
+      return Array.from(pixels.slice(i, i + 4));
+    }) };
   });
+  expect(containment.outsideDifferences).toBe(0);
+  const margins = containment.margins;
   for (const pixel of margins) expect(pixel).toEqual([17, 24, 39, 255]);
   await canvas.screenshot({ path: "test-results/sale-polish-clipped-drag-zoom.png" });
   await page.reload();
