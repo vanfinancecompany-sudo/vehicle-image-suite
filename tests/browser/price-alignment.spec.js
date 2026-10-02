@@ -59,7 +59,6 @@ test("resized template fixture keeps labels fixed, clears them, and aligns dynam
   expect(result.offsetWas.x).toBe(34); expect(result.offsetWas.y).toBe(result.defaults.wasPrice.y + 3);
   expect(result.offsetNow.x).toBe(213); expect(result.offsetNow.y).toBe(result.defaults.nowPrice.y - 5);
   await page.locator("canvas").screenshot({ path: "test-results/resized-price-baseline-350-10245.png" });
-  console.log("ALIGNMENT_PREVIEW:" + result.png);
 });
 
 test("untouched saved Noto master aligns once; manual master and vehicle offsets survive reload", async ({ page }) => {
