@@ -250,7 +250,7 @@ test("master font/width calibration and individual price position persist indepe
   await expect.poll(() => page.evaluate(() => document.fonts.check('400 72px "Archivo Black"'))).toBe(true);
   const before = await page.evaluate(key => JSON.parse(localStorage.getItem(key)), key);
   expect(before.jobs[0].priceOffsets.nowPrice).toEqual({ x: 26, y: -16 });
-  expect(before.priceLayout.nowPrice.x).toBe(215);
+  expect(before.priceLayout.nowPrice.x).toBe(211);
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export PNG Only", exact: true }).click();
   const download = await downloadPromise;

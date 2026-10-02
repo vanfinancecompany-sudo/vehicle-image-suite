@@ -15,8 +15,8 @@ that the original flattened artwork used this exact font.
 Final default coordinates refer to visible ink:
 | Field | Font | Size | X | Y | Width |
 | --- | --- | ---: | ---: | ---: | ---: |
-| WAS | Noto Sans 900 | 48px | 30 | 665 | 86% |
-| NOW | Noto Sans 900 | 72px | 215 | 646.55 | 88% |
+| WAS | Noto Sans 900 | 48px | 22 | 665 | 86% |
+| NOW | Noto Sans 900 | 72px | 211 | 646.55 | 88% |
 | SAVE | Noto Sans 900 | 52px | 695 | 40 | 130% |
 
 SAVE uses an internal rectangle (688,39)-(925,86). Normal values keep size/stretch.
@@ -76,3 +76,8 @@ shared baselines, clearance below the fixed label levels, bottom-panel containme
 independent vehicle offsets and saved master migration/manual-edit persistence.
 Its 960 × 720 resized-panel backdrop follows the supplied screenshot; it is
 test scaffolding and does not replace or edit the user's browser-local master PNG.
+
+Final horizontal calibration: WAS X 30 → 22 (8px left), NOW X 215 → 211 (4px left).
+All Y positions and styling remain unchanged. An exact untouched previous aligned
+master receives these X changes once; manual master choices and vehicle offsets remain
+intact. SAVE and baked-in labels are untouched.

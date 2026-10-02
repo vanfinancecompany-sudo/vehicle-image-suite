@@ -12,18 +12,23 @@ export const PRICE_FONTS = [
 // The SAVE rectangle excludes its fixed label, frame and right-edge artwork.
 export const SAVE_SAFE_AREA = { left: 688, top: 39, right: 925, bottom: 86 };
 export const DEFAULT_PRICE_LAYOUT = {
-  wasPrice: { x: 30, y: 665, size: 48, color: "#e2e2e2", fontFamily: "Noto Sans", fontWeight: 900, widthScale: 0.86 },
-  nowPrice: { x: 215, y: 646.55, size: 72, color: "#111111", fontFamily: "Noto Sans", fontWeight: 900, widthScale: 0.88 },
+  wasPrice: { x: 22, y: 665, size: 48, color: "#e2e2e2", fontFamily: "Noto Sans", fontWeight: 900, widthScale: 0.86 },
+  nowPrice: { x: 211, y: 646.55, size: 72, color: "#111111", fontFamily: "Noto Sans", fontWeight: 900, widthScale: 0.88 },
   savePrice: { x: 695, y: 40, size: 52, color: "#ffffff", fontFamily: "Noto Sans", fontWeight: 900, widthScale: 1.3 },
 };
 
 // With the bundled Noto Sans metrics, both text baselines are 700px.
 // NOW's 0.45px stroke allowance is included without changing its styling.
-export const PRICE_DEFAULTS_REVISION = 3;
-const previousNotoLayout = {
+export const PRICE_DEFAULTS_REVISION = 4;
+const previousAlignedLayout = {
   ...DEFAULT_PRICE_LAYOUT,
-  wasPrice: { ...DEFAULT_PRICE_LAYOUT.wasPrice, y: 643 },
-  nowPrice: { ...DEFAULT_PRICE_LAYOUT.nowPrice, y: 628 },
+  wasPrice: { ...DEFAULT_PRICE_LAYOUT.wasPrice, x: 30 },
+  nowPrice: { ...DEFAULT_PRICE_LAYOUT.nowPrice, x: 215 },
+};
+const previousNotoLayout = {
+  ...previousAlignedLayout,
+  wasPrice: { ...previousAlignedLayout.wasPrice, y: 643 },
+  nowPrice: { ...previousAlignedLayout.nowPrice, y: 628 },
 };
 // Recognise only complete, untouched defaults shipped in the previous pass.
 // Any partial/manual calibration, unknown field option or different value is preserved.
@@ -50,12 +55,23 @@ export function migrateCampaignPriceDefaults(campaign) {
       return saved && Object.keys(saved).length === Object.keys(old).length &&
         Object.entries(old).every(([key, value]) => saved[key] === value);
     });
-  if (matches(fields.map(field => previousNotoLayout[field]))) {
-    // Only Y changes. Preserve every other master value and all vehicle data.
+  // Apply this X-only calibration once to an exact untouched previous master.
+  // All Y values, styling, SAVE and per-vehicle offsets remain unchanged.
+  if (matches(fields.map(field => previousAlignedLayout[field]))) {
     return { ...campaign, priceDefaultsRevision: PRICE_DEFAULTS_REVISION, priceLayout: {
       ...layout,
-      wasPrice: { ...layout.wasPrice, y: DEFAULT_PRICE_LAYOUT.wasPrice.y },
-      nowPrice: { ...layout.nowPrice, y: DEFAULT_PRICE_LAYOUT.nowPrice.y },
+      wasPrice: { ...layout.wasPrice, x: DEFAULT_PRICE_LAYOUT.wasPrice.x },
+      nowPrice: { ...layout.nowPrice, x: DEFAULT_PRICE_LAYOUT.nowPrice.x },
+    } };
+  }
+  // Keep revision-3 manual layouts protected from the earlier vertical migration.
+  if (campaign.priceDefaultsRevision >= 3) return campaign;
+  if (matches(fields.map(field => previousNotoLayout[field]))) {
+    // Keep the existing vertical migration and use the latest X calibration.
+    return { ...campaign, priceDefaultsRevision: PRICE_DEFAULTS_REVISION, priceLayout: {
+      ...layout,
+      wasPrice: { ...layout.wasPrice, x: DEFAULT_PRICE_LAYOUT.wasPrice.x, y: DEFAULT_PRICE_LAYOUT.wasPrice.y },
+      nowPrice: { ...layout.nowPrice, x: DEFAULT_PRICE_LAYOUT.nowPrice.x, y: DEFAULT_PRICE_LAYOUT.nowPrice.y },
     } };
   }
   // A previous explicit font choice must not be migrated a second time.

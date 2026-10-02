@@ -53,11 +53,11 @@ test("resized template fixture keeps labels fixed, clears them, and aligns dynam
     expect(was.y + was.height).toBeLessThanOrEqual(712);
     expect(now.y + now.height).toBeLessThanOrEqual(712);
     expect(was.position.size).toBe(48); expect(now.position.size).toBe(72);
-    expect(was.x).toBe(30); expect(now.x).toBe(215);
+    expect(was.x).toBe(22); expect(now.x).toBe(211);
   }
   expect(result.labelChanges).toBe(0);
-  expect(result.offsetWas.x).toBe(34); expect(result.offsetWas.y).toBe(result.defaults.wasPrice.y + 3);
-  expect(result.offsetNow.x).toBe(213); expect(result.offsetNow.y).toBe(result.defaults.nowPrice.y - 5);
+  expect(result.offsetWas.x).toBe(26); expect(result.offsetWas.y).toBe(result.defaults.wasPrice.y + 3);
+  expect(result.offsetNow.x).toBe(209); expect(result.offsetNow.y).toBe(result.defaults.nowPrice.y - 5);
   await page.locator("canvas").screenshot({ path: "test-results/resized-price-baseline-350-10245.png" });
 });
 
@@ -86,7 +86,8 @@ test("untouched saved Noto master aligns once; manual master and vehicle offsets
   // An ordinary nudge persists the migrated master without resetting other vehicle positions.
   await page.getByRole("button", { name: "Move NOW right 2 pixels", exact: true }).click();
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("vehicle-image-suite-sales-campaign")));
-  expect(saved.priceDefaultsRevision).toBe(3);
+  expect(saved.priceDefaultsRevision).toBe(4);
+  expect(saved.priceLayout.wasPrice.x).toBe(22); expect(saved.priceLayout.nowPrice.x).toBe(211);
   expect(saved.jobs[0].priceOffsets.wasPrice).toEqual({ x: 2, y: -1 });
   expect(saved.jobs[0].priceOffsets.nowPrice).toEqual({ x: -2, y: 3 });
   expect(saved.priceLayout.savePrice).toEqual(campaign.priceLayout.savePrice);

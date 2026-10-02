@@ -92,7 +92,7 @@ test("font widths expand from the left anchor and WAS stroke uses the same group
   assert.equal(priceGeometry(ctx, job, "nowPrice", wider).x, scaled.x);
   job.priceOffsets.wasPrice = { x: 6, y: -4 };
   drawPrices(ctx, job, { ...wider, wasPrice: { ...DEFAULT_PRICE_LAYOUT.wasPrice, widthScale: 1.1 } });
-  assert.deepEqual(calls[0], ["translate", 36, DEFAULT_PRICE_LAYOUT.wasPrice.y - 4]);
+  assert.deepEqual(calls[0], ["translate", 28, DEFAULT_PRICE_LAYOUT.wasPrice.y - 4]);
   assert.deepEqual(calls[1], ["scale", 1.1, 1]);
   assert.deepEqual(calls.find(call => call[0] === "start"), ["start", -8, 42 * 0.8]);
   assert.deepEqual(calls.find(call => call[0] === "end"), ["end", ctx.measureText(formatPrice(job.wasPrice)).width + 6, 42 * 0.2]);

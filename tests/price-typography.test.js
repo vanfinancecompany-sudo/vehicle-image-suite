@@ -94,6 +94,8 @@ test("untouched League Spartan defaults migrate once, keeping every job/offset",
   assert.equal(migrated.jobs, campaign.jobs);
   assert.equal(migrated.priceDefaultsRevision, PRICE_DEFAULTS_REVISION);
   assert.equal(migrateCampaignPriceDefaults(migrated), migrated);
+  assert.equal(migrated.priceDefaultsRevision, PRICE_DEFAULTS_REVISION);
+  assert.equal(migrateCampaignPriceDefaults({ ...campaign, priceDefaultsRevision: PRICE_DEFAULTS_REVISION }).priceLayout, campaign.priceLayout);
   let raw = JSON.stringify(campaign);
   const storage = { getItem: () => raw, setItem: (_, value) => { raw = value; } };
   const loaded = loadCampaign(storage);
@@ -150,10 +152,10 @@ test("SAVE alone has a small hard shadow clipped to the unchanged safe area", ()
 
 const previousNoto = () => ({
   ...structuredClone(DEFAULT_PRICE_LAYOUT),
-  wasPrice: { ...DEFAULT_PRICE_LAYOUT.wasPrice, y: 643 },
-  nowPrice: { ...DEFAULT_PRICE_LAYOUT.nowPrice, y: 628 },
+  wasPrice: { ...DEFAULT_PRICE_LAYOUT.wasPrice, x: 30, y: 643 },
+  nowPrice: { ...DEFAULT_PRICE_LAYOUT.nowPrice, x: 215, y: 628 },
 });
-test("untouched Noto defaults realign only WAS/NOW Y and persist all saved vehicle data", () => {
+test("untouched legacy Noto defaults use current WAS/NOW calibration and persist all vehicle data", () => {
   for (const revision of [undefined, 2]) {
     const campaign = { ...newCampaign(), priceLayout: previousNoto(), jobs: [job()], priceDefaultsRevision: revision };
     campaign.jobs[0].priceOffsets.wasPrice = { x: 12, y: -4 };
@@ -166,7 +168,8 @@ test("untouched Noto defaults realign only WAS/NOW Y and persist all saved vehic
     assert.deepEqual(migrated.jobs, before.jobs);
     for (const field of ["wasPrice", "nowPrice"]) {
       assert.equal(migrated.priceLayout[field].y, DEFAULT_PRICE_LAYOUT[field].y);
-      assert.deepEqual({ ...migrated.priceLayout[field], y: before.priceLayout[field].y }, before.priceLayout[field]);
+      assert.equal(migrated.priceLayout[field].x, DEFAULT_PRICE_LAYOUT[field].x);
+      assert.deepEqual({ ...migrated.priceLayout[field], x: before.priceLayout[field].x, y: before.priceLayout[field].y }, before.priceLayout[field]);
     }
     assert.deepEqual(migrated.priceLayout.savePrice, before.priceLayout.savePrice);
     let raw = JSON.stringify(campaign);
@@ -189,4 +192,34 @@ test("manual Noto calibration and previous explicit League Spartan choices stay 
   }
   const explicit = { ...newCampaign(), priceLayout: oldLayout(), priceDefaultsRevision: 2 };
   assert.equal(migrateCampaignPriceDefaults(explicit), explicit);
+});
+
+test("horizontal calibration changes only WAS/NOW X once and preserves manual master settings", () => {
+  const campaign = { ...newCampaign(), priceDefaultsRevision: 3, jobs: [job()], priceLayout: {
+    ...structuredClone(DEFAULT_PRICE_LAYOUT),
+    wasPrice: { ...DEFAULT_PRICE_LAYOUT.wasPrice, x: 30 },
+    nowPrice: { ...DEFAULT_PRICE_LAYOUT.nowPrice, x: 215 },
+  } };
+  campaign.jobs[0].priceOffsets.wasPrice = { x: 12, y: -4 };
+  campaign.jobs[0].priceOffsets.nowPrice = { x: -2, y: 3 };
+  const before = structuredClone(campaign);
+  const migrated = migrateCampaignPriceDefaults(campaign);
+  assert.equal(migrated.priceLayout.wasPrice.x, 22);
+  assert.equal(migrated.priceLayout.nowPrice.x, 211);
+  assert.deepEqual({
+    ...migrated, priceDefaultsRevision: before.priceDefaultsRevision,
+    priceLayout: { ...migrated.priceLayout,
+      wasPrice: { ...migrated.priceLayout.wasPrice, x: 30 },
+      nowPrice: { ...migrated.priceLayout.nowPrice, x: 215 } },
+  }, before);
+  assert.equal(migrateCampaignPriceDefaults(migrated), migrated);
+  let raw = JSON.stringify(campaign);
+  const storage = { getItem: () => raw, setItem: (_, value) => { raw = value; } };
+  const loaded = loadCampaign(storage); saveCampaign(loaded, storage);
+  assert.deepEqual(loadCampaign(storage), migrated);
+  for (const [field, patch] of [["wasPrice", { x: 31 }], ["nowPrice", { y: 645 }], ["savePrice", { y: 42 }]]) {
+    const manual = structuredClone(campaign);
+    Object.assign(manual.priceLayout[field], patch);
+    assert.equal(migrateCampaignPriceDefaults(manual), manual);
+  }
 });
