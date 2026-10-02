@@ -1,47 +1,19 @@
 import express from "express";
+import dealerKitImagesHandler from "./api/dealerkit-images.js";
 import cors from "cors";
 import fetch from "node-fetch";
 import archiver from "archiver";
+
+import extractHandler from "./api/extract.js";
 
 const app = express();
 
 app.use(cors());
 
-app.get("/extract", async (req, res) => {
-  try {
-    const url = req.query.url;
+app.get(["/api/extract", "/extract"], extractHandler);
+app.get("/api/dealerkit-images", dealerKitImagesHandler);
 
-    if (!url) {
-      return res.status(400).json({ error: "No URL provided" });
-    }
-
-    const response = await fetch(url, {
-      redirect: "follow",
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-      },
-    });
-
-    if (!response.ok) {
-      return res.status(500).json({ error: `Source page returned ${response.status}` });
-    }
-
-    const html = await response.text();
-    const matches =
-      html.match(/https:\/\/img\.cdn\.dragon2000\.net[^"'\\s>]+-large\.jpg/g) || [];
-
-    const images = [...new Set(matches)];
-
-    res.json({ images, count: images.length });
-  } catch (error) {
-    console.error("Extract error:", error);
-    res.status(500).json({ error: error.message || "Failed to extract images" });
-  }
-});
-
-app.get("/image-proxy", async (req, res) => {
+app.get(["/api/image", "/image-proxy"], async (req, res) => {
   const imageUrl = req.query.url;
 
   if (!imageUrl) {
@@ -72,7 +44,7 @@ app.get("/image-proxy", async (req, res) => {
   }
 });
 
-app.get("/download-zip", async (req, res) => {
+app.get(["/api/download-zip", "/download-zip"], async (req, res) => {
   try {
     const urlsParam = req.query.urls;
 

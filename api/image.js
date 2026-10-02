@@ -22,7 +22,7 @@ export default async function handler(req, res) {
     res.setHeader("Content-Type", contentType);
     res.setHeader("Cache-Control", "public, max-age=3600");
     res.send(buffer);
-  } catch (err) {
+  } catch {
     res.status(500).send("Image proxy failed");
   }
 }
