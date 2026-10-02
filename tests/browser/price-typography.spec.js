@@ -134,7 +134,7 @@ test("untouched old default migration preserves offsets and subsequent manual ca
   await page.getByRole("button", { name: "Move NOW left 2 pixels", exact: true }).click();
   const migrated = await page.evaluate(() => JSON.parse(localStorage.getItem("vehicle-image-suite-sales-campaign")));
   expect(migrated.jobs[0].priceOffsets.nowPrice).toEqual({ x: 12, y: -6 });
-  expect(migrated.priceDefaultsRevision).toBe(2);
+  expect(migrated.priceDefaultsRevision).toBe(3);
   expect(migrated.priceLayout.nowPrice.fontFamily).toBe("Noto Sans");
   expect(migrated.jobs[0].registration).toBe("HJ22 LSK");
   await panel.getByLabel("NOW font family", { exact: true }).selectOption("Roboto|900");

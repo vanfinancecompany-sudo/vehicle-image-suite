@@ -15,8 +15,8 @@ that the original flattened artwork used this exact font.
 Final default coordinates refer to visible ink:
 | Field | Font | Size | X | Y | Width |
 | --- | --- | ---: | ---: | ---: | ---: |
-| WAS | Noto Sans 900 | 48px | 30 | 643 | 86% |
-| NOW | Noto Sans 900 | 72px | 215 | 628 | 88% |
+| WAS | Noto Sans 900 | 48px | 30 | 665 | 86% |
+| NOW | Noto Sans 900 | 72px | 215 | 646.55 | 88% |
 | SAVE | Noto Sans 900 | 52px | 695 | 40 | 130% |
 
 SAVE uses an internal rectangle (688,39)-(925,86). Normal values keep size/stretch.
@@ -57,3 +57,22 @@ tests/browser/polish.spec.js checks SAVE £350 / NOW £10,245, real ink density 
 shadow-only pixels, strict frame containment after drag/zoom, transform persistence and
 byte-identical editor/export PNGs. Deterministic screenshots use saleFrame.js as test
 scaffolding; the customer's approved overlay is not replaced.
+
+## Resized template price alignment
+
+Only the dynamic WAS/NOW default Y coordinates change: WAS 643 → 665 and NOW
+628 → 646.55. At the existing bundled Noto Sans sizes, their alphabetic baselines
+are both 700px, including NOW's existing half-stroke allowance. X, font size,
+font weight, width, colours, tracking, stroke, SAVE and WAS strike-through styling
+are unchanged. The baked-in labels stay at their existing levels.
+
+A complete exact untouched previous Noto master moves to these Y defaults once.
+Any manual/partial master calibration is preserved. Photo transforms, prices,
+per-vehicle offsets, photos and completion status are never reset.
+Previously explicit League Spartan choices at revision 2 stay protected.
+
+price-alignment.spec.js checks several dynamic values with real bundled fonts,
+shared baselines, clearance below the fixed label levels, bottom-panel containment,
+independent vehicle offsets and saved master migration/manual-edit persistence.
+Its 960 × 720 resized-panel backdrop follows the supplied screenshot; it is
+test scaffolding and does not replace or edit the user's browser-local master PNG.

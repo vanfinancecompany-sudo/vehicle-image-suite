@@ -52,7 +52,7 @@ test("SAVE shadow and tighter/heavier NOW use the production renderer and retain
     document.body.replaceChildren(canvas);
     return { now, box, plainWidth, polished, previous, shadow, outside, png: canvas.toDataURL() };
   });
-  expect(result.now.x).toBe(215); expect(result.now.y).toBe(628);
+  expect(result.now.x).toBe(215); expect(result.now.y).toBe(646.55);
   expect(result.now.width).toBeLessThan(result.plainWidth * 0.88);
   expect(result.polished.count).toBeGreaterThan(result.previous.count);
   expect(Math.abs(result.polished.left - result.previous.left)).toBeLessThanOrEqual(1);

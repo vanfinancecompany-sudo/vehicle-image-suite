@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULT_PRICE_LAYOUT, SAVE_SAFE_AREA, migrateCampaignPriceDefaults } from "../src/campaign/priceDefaults.js";
+import { DEFAULT_PRICE_LAYOUT, SAVE_SAFE_AREA, PRICE_DEFAULTS_REVISION, migrateCampaignPriceDefaults } from "../src/campaign/priceDefaults.js";
 import { drawPrices, priceGeometry } from "../src/campaign/priceRenderer.js";
 import { loadCampaign, saveCampaign } from "../src/campaign/campaignStorage.js";
 import { createJob, newCampaign, PRICE_FIELDS } from "../src/campaign/campaignModel.js";
@@ -92,7 +92,7 @@ test("untouched League Spartan defaults migrate once, keeping every job/offset",
   const migrated = migrateCampaignPriceDefaults(campaign);
   assert.deepEqual(migrated.priceLayout, DEFAULT_PRICE_LAYOUT);
   assert.equal(migrated.jobs, campaign.jobs);
-  assert.equal(migrated.priceDefaultsRevision, 2);
+  assert.equal(migrated.priceDefaultsRevision, PRICE_DEFAULTS_REVISION);
   assert.equal(migrateCampaignPriceDefaults(migrated), migrated);
   let raw = JSON.stringify(campaign);
   const storage = { getItem: () => raw, setItem: (_, value) => { raw = value; } };
@@ -146,4 +146,47 @@ test("SAVE alone has a small hard shadow clipped to the unchanged safe area", ()
   assert.deepEqual(draws.find(draw => draw.text === "£1,500"),
     { text: "£1,500", color: "rgba(0, 0, 0, 0.38)", blur: 0, x: 1, y: 1.5 });
   assert.deepEqual(clips, [[688, 39, 237, 47]]);
+});
+
+const previousNoto = () => ({
+  ...structuredClone(DEFAULT_PRICE_LAYOUT),
+  wasPrice: { ...DEFAULT_PRICE_LAYOUT.wasPrice, y: 643 },
+  nowPrice: { ...DEFAULT_PRICE_LAYOUT.nowPrice, y: 628 },
+});
+test("untouched Noto defaults realign only WAS/NOW Y and persist all saved vehicle data", () => {
+  for (const revision of [undefined, 2]) {
+    const campaign = { ...newCampaign(), priceLayout: previousNoto(), jobs: [job()], priceDefaultsRevision: revision };
+    campaign.jobs[0].priceOffsets.wasPrice = { x: 12, y: -4 };
+    campaign.jobs[0].priceOffsets.nowPrice = { x: -2, y: 3 };
+    campaign.jobs[0].transform = { x: 42, y: -10, scale: 1.4 };
+    campaign.jobs[0].selectedImage = "upload:unchanged"; campaign.jobs[0].done = true;
+    const before = structuredClone(campaign);
+    const migrated = migrateCampaignPriceDefaults(campaign);
+    assert.equal(migrated.jobs, campaign.jobs);
+    assert.deepEqual(migrated.jobs, before.jobs);
+    for (const field of ["wasPrice", "nowPrice"]) {
+      assert.equal(migrated.priceLayout[field].y, DEFAULT_PRICE_LAYOUT[field].y);
+      assert.deepEqual({ ...migrated.priceLayout[field], y: before.priceLayout[field].y }, before.priceLayout[field]);
+    }
+    assert.deepEqual(migrated.priceLayout.savePrice, before.priceLayout.savePrice);
+    let raw = JSON.stringify(campaign);
+    const storage = { getItem: () => raw, setItem: (_, value) => { raw = value; } };
+    const loaded = loadCampaign(storage); saveCampaign(loaded, storage);
+    assert.deepEqual(loadCampaign(storage), loaded);
+    assert.equal(loaded.priceDefaultsRevision, PRICE_DEFAULTS_REVISION);
+    assert.equal(migrateCampaignPriceDefaults(migrated), migrated);
+  }
+});
+test("manual Noto calibration and previous explicit League Spartan choices stay untouched", () => {
+  for (const [field, patch] of [
+    ["wasPrice", { y: 660 }], ["nowPrice", { y: 635 }], ["nowPrice", { size: 74 }],
+    ["nowPrice", { x: 220 }], ["nowPrice", { widthScale: 1 }],
+    ["wasPrice", { fontFamily: "Roboto" }], ["savePrice", { y: 41 }],
+  ]) {
+    const campaign = { ...newCampaign(), priceLayout: previousNoto(), priceDefaultsRevision: 2 };
+    Object.assign(campaign.priceLayout[field], patch);
+    assert.equal(migrateCampaignPriceDefaults(campaign), campaign);
+  }
+  const explicit = { ...newCampaign(), priceLayout: oldLayout(), priceDefaultsRevision: 2 };
+  assert.equal(migrateCampaignPriceDefaults(explicit), explicit);
 });
