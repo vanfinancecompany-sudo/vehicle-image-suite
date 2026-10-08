@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import * as XLSX from "xlsx";
-import { createJob, formatPrice, campaignFilename, nextUnfinished, newCampaign } from "../src/campaign/campaignModel.js";
+import { createJob, formatPrice, campaignFilename, nextUnfinished, newCampaign, isSaleTemplate, manualSalePriceJob } from "../src/campaign/campaignModel.js";
 import { parseRows, parseSpreadsheet } from "../src/campaign/spreadsheetParser.js";
 import { loadCampaign, saveCampaign, CAMPAIGN_KEY } from "../src/campaign/campaignStorage.js";
 import { drawPrices, ensurePriceFont, priceGeometry, DEFAULT_PRICE_LAYOUT } from "../src/campaign/priceRenderer.js";
@@ -160,4 +160,29 @@ test("campaign font readiness waits for the chosen bundled font and permits retr
     resolveFont([{}]);
     await retry;
   } finally { globalThis.document = previous; }
+});
+
+test("one-off manual SALE prices reuse parsed campaign prices, preserve pence and calculate optional SAVE", () => {
+  assert.equal(isSaleTemplate({ id: "sale", name: "sale" }), true);
+  assert.equal(isSaleTemplate({ name: "OCTOBER FEST SALE TEMPLATE" }), true);
+  assert.equal(isSaleTemplate({ name: "Van Finance", filePath: "/templates/van-finance-template.png" }), false);
+  assert.equal(isSaleTemplate({ name: "Rent2Buy", filePath: "/templates/rent2buy-template.png" }), false);
+  assert.equal(manualSalePriceJob({ wasPrice: "", nowPrice: "", savePrice: "" }).job, null);
+  assert.equal(manualSalePriceJob({ wasPrice: "", nowPrice: "", savePrice: "" }).error, "");
+
+  const manual = manualSalePriceJob({ wasPrice: "£12,995", nowPrice: "11,995", savePrice: "£1,000" });
+  assert.equal(manual.error, "");
+  assert.equal(formatPrice(manual.job.wasPrice), "£12,995");
+  assert.equal(formatPrice(manual.job.nowPrice), "£11,995");
+  assert.equal(formatPrice(manual.job.savePrice), "£1,000");
+  assert.deepEqual(manual.job.priceOffsets.wasPrice, { x: 0, y: 0 });
+  assert.equal(manual.job.id, "manual-sale-preview");
+
+  const calculated = manualSalePriceJob({ wasPrice: "14,495.50", nowPrice: "13,995.50", savePrice: "" });
+  assert.equal(calculated.error, "");
+  assert.equal(formatPrice(calculated.job.savePrice), "£500.00");
+  assert.match(manualSalePriceJob({ wasPrice: "14495", nowPrice: "" }).error, /Enter valid WAS and NOW/);
+  assert.match(manualSalePriceJob({ wasPrice: "not a price", nowPrice: "12000" }).error, /Enter valid WAS and NOW/);
+  assert.match(manualSalePriceJob({ wasPrice: "10000", nowPrice: "11000" }).error, /NOW must not be greater/);
+  assert.equal(manualSalePriceJob({ wasPrice: "12000", nowPrice: "11000", savePrice: "£2,500" }).job.savePrice.value, 2500);
 });
