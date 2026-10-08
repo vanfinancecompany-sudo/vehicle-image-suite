@@ -296,3 +296,47 @@ test("removing active custom campaign template selects another valid template", 
   await expect(panel.getByLabel("Campaign template")).toHaveValue("van-finance");
   expect(errors).toEqual([]);
 });
+
+test("one-off SALE editor accepts local photo and manually entered SAVE/WAS/NOW without spreadsheet", async ({ page }) => {
+  const errors = await setup(page);
+  const manual = page.getByRole("group", { name: "Manual sale prices" });
+  await expect(manual).toBeVisible();
+  const save = manual.getByLabel("Manual SAVE");
+  const was = manual.getByLabel("Manual WAS");
+  const now = manual.getByLabel("Manual NOW");
+  await expect(was).toBeDisabled();
+  await manual.getByLabel("Upload vehicle photo").setInputFiles({
+    name: "one-off.jpg", mimeType: "image/png", buffer: png,
+  });
+  await expect(page.getByRole("button", { name: "Image 1 Selected" })).toBeVisible();
+  await was.fill("£12,995");
+  await expect(page.getByRole("button", { name: "Export PNG", exact: true })).toBeDisabled();
+  await now.fill("£11,995");
+  await expect(page.getByRole("button", { name: "Export PNG", exact: true })).toBeEnabled();
+  await expect.poll(() => page.evaluate(() =>
+    ["£12,995", "£11,995", "£1,000"].every(price => window.priceDraws.includes(price)),
+  )).toBe(true);
+  await save.fill("£950");
+  await expect.poll(() => page.evaluate(() => window.priceDraws.includes("£950"))).toBe(true);
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export PNG", exact: true }).click();
+  await assertPng(await downloadPromise);
+  expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key))?.jobs?.length || 0, key)).toBe(0);
+
+  await manual.getByLabel("Upload vehicle photo").setInputFiles({
+    name: "second.jpg", mimeType: "image/png", buffer: png,
+  });
+  await expect(page.getByRole("button", { name: "Image 2 Selected" })).toBeVisible();
+  await expect(was).toHaveValue("");
+  await expect(now).toHaveValue("");
+  await page.getByRole("button", { name: "Previous Image", exact: true }).click();
+  await expect(was).toHaveValue("£12,995");
+  await expect(now).toHaveValue("£11,995");
+  await expect(save).toHaveValue("£950");
+  await manual.getByRole("button", { name: "Clear manual prices" }).click();
+  await expect(was).toHaveValue("");
+  await expect(now).toHaveValue("");
+  await expect(save).toHaveValue("");
+  expect(errors).toEqual([]);
+});
