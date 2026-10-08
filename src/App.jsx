@@ -10,7 +10,7 @@ import "@fontsource/archivo-black/latin-400.css";
 import SalesCampaignPanel, { DynamicPriceControls } from "./campaign/SalesCampaignPanel.jsx";
 import VehicleThumbnail from "./campaign/VehicleThumbnail.jsx";
 import useCampaign from "./campaign/useCampaign.js";
-import { campaignFilename, DEFAULT_TRANSFORM, nextUnfinished } from "./campaign/campaignModel.js";
+import { campaignFilename, DEFAULT_TRANSFORM, nextUnfinished, isSaleTemplate, manualSalePriceJob } from "./campaign/campaignModel.js";
 import { isUpload, readImage, storeImage, removeStoredImage } from "./campaign/campaignStorage.js";
 import { ensurePriceFont } from "./campaign/priceRenderer.js";
 
@@ -32,6 +32,8 @@ const EDITOR_CANVAS = {
   width: 960,
   height: 720,
 };
+
+const EMPTY_MANUAL_PRICES = Object.freeze({ wasPrice: "", nowPrice: "", savePrice: "" });
 
 const DEFAULT_TEMPLATES = [
   {
@@ -314,6 +316,7 @@ function App() {
   const [normalTransform, setNormalTransform] = useState({ ...DEFAULT_TRANSFORM });
   const [templates, setTemplates] = useState(loadTemplateLibrary);
   const [normalTemplateId, setNormalTemplateId] = useState(() => loadTemplateLibrary()[0]?.id || "");
+  const [manualPricesByImage, setManualPricesByImage] = useState({});
   const [newTemplateName, setNewTemplateName] = useState("");
   const [newTemplateFile, setNewTemplateFile] = useState(null);
   const [dragStart, setDragStart] = useState(null);
@@ -339,6 +342,22 @@ function App() {
     ? templates.find(template => template.id === campaign.templateId)
     : templates.find(template => template.id === normalTemplateId) || templates[0],
     [activeJob, campaign.templateId, normalTemplateId, templates]);
+  const manualSaleEnabled = !activeJob && isSaleTemplate(activeTemplate);
+  const selectedManualPrices = manualPricesByImage[selectedImage] || EMPTY_MANUAL_PRICES;
+  const manualPricing = useMemo(() => manualSaleEnabled && selectedImage
+    ? manualSalePriceJob(selectedManualPrices) : { job: null, error: "" },
+    [manualSaleEnabled, selectedImage, selectedManualPrices]);
+  const renderedPriceJob = activeJob || manualPricing.job;
+  const changeManualPrice = (field, value) => {
+    if (!selectedImage) return;
+    setManualPricesByImage(current => ({
+      ...current, [selectedImage]: { ...(current[selectedImage] || EMPTY_MANUAL_PRICES), [field]: value },
+    }));
+  };
+  const clearManualPrices = () => {
+    if (!selectedImage) return;
+    setManualPricesByImage(current => ({ ...current, [selectedImage]: { ...EMPTY_MANUAL_PRICES } }));
+  };
 
   const setImageTransform = updater => {
     if (activeJob) {
@@ -384,15 +403,15 @@ function App() {
       const [image, overlay] = await Promise.all([
         selectedImage ? loadVehicleImage(selectedImage) : Promise.resolve(null),
         loadCanvasImage(activeTemplate.filePath),
-        activeJob ? ensurePriceFont(campaign.priceLayout) : Promise.resolve(),
+        renderedPriceJob ? ensurePriceFont(campaign.priceLayout) : Promise.resolve(),
       ]);
       if (sequence !== drawSequence.current) return;
       drawComposite(canvas.getContext("2d"), image, overlay, activeTemplate, imageTransform,
-        activeJob, campaign.priceLayout);
+        renderedPriceJob, campaign.priceLayout);
     } catch (drawError) {
       if (sequence === drawSequence.current) setError(drawError.message);
     }
-  }, [activeTemplate, selectedImage, imageTransform, activeJob, campaign.priceLayout]);
+  }, [activeTemplate, selectedImage, imageTransform, renderedPriceJob, campaign.priceLayout]);
 
   useEffect(() => {
     drawCanvas();
@@ -429,6 +448,12 @@ function App() {
       setNormalImages(nextImages);
       setNormalSelectedImage(nextSelected);
       setNormalTransform(transform);
+      setManualPricesByImage(current => {
+        const updated = { ...current };
+        delete updated[imageUrlToDelete];
+        return updated;
+      });
+      if (isUpload(imageUrlToDelete)) removeStoredImage(imageUrlToDelete).catch(error => setError(error.message));
     }
     setStatus(nextImages.length + " images remaining.");
   };
@@ -455,6 +480,7 @@ function App() {
         setNormalImages(extractedImages);
         setNormalSelectedImage(extractedImages[0] || "");
         setNormalTransform({ ...DEFAULT_TRANSFORM });
+        setManualPricesByImage({});
       }
       setStatus(
         extractedImages.length
@@ -616,18 +642,41 @@ function App() {
     }));
   };
 
-  const renderImageWithTemplate = async (imageUrl, transform = { ...DEFAULT_TRANSFORM }) => {
+  const uploadNormalImage = async file => {
+    if (!file || activeJob || busy) return;
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setError("Choose a JPG, PNG or WebP vehicle photo."); return;
+    }
+    setIsUploading(true);
+    setError("");
+    try {
+      const reference = await storeImage(file);
+      try {
+        await loadVehicleImage(reference);
+        setNormalImages(current => [...current, reference]);
+        setNormalSelectedImage(reference);
+        setNormalTransform({ ...DEFAULT_TRANSFORM });
+        setStatus("Vehicle photo uploaded. Enter sale prices and export the PNG.");
+      } catch (imageError) {
+        await removeStoredImage(reference);
+        throw imageError;
+      }
+    } catch (uploadError) { setError(uploadError.message || "Image upload failed."); }
+    finally { setIsUploading(false); }
+  };
+
+  const renderImageWithTemplate = async (imageUrl, transform = { ...DEFAULT_TRANSFORM }, priceJob = renderedPriceJob) => {
     if (!activeTemplate) throw new Error("Choose a template before exporting.");
     const [vehicleImage, templateImage] = await Promise.all([
       loadVehicleImage(imageUrl),
       loadCanvasImage(activeTemplate.filePath),
-      activeJob ? ensurePriceFont(campaign.priceLayout) : Promise.resolve(),
+      priceJob ? ensurePriceFont(campaign.priceLayout) : Promise.resolve(),
     ]);
     const canvas = document.createElement("canvas");
     canvas.width = activeTemplate.width;
     canvas.height = activeTemplate.height;
     drawComposite(canvas.getContext("2d"), vehicleImage, templateImage, activeTemplate, transform,
-      activeJob, campaign.priceLayout);
+      priceJob, campaign.priceLayout);
     return canvasToPngBlob(canvas);
   };
 
@@ -636,6 +685,7 @@ function App() {
     setIsExporting(true);
     setError("");
     try {
+      if (manualSaleEnabled && manualPricing.error) throw new Error(manualPricing.error);
       if (activeJob && (!activeJob.wasPrice || !activeJob.nowPrice || !activeJob.savePrice)) {
         throw new Error("Enter valid WAS, NOW and SAVE values before exporting.");
       }
@@ -725,7 +775,11 @@ function App() {
       const files = [];
       for (let index = 0; index < images.length; index += 1) {
         const imageUrl = images[index];
-        const blob = await renderImageWithTemplate(imageUrl);
+        const pricing = manualSaleEnabled
+          ? manualSalePriceJob(manualPricesByImage[imageUrl] || EMPTY_MANUAL_PRICES)
+          : { job: null, error: "" };
+        if (pricing.error) throw new Error(`Image ${index + 1}: ${pricing.error}`);
+        const blob = await renderImageWithTemplate(imageUrl, { ...DEFAULT_TRANSFORM }, activeJob || pricing.job);
         files.push({
           name: activeJob ? `alternative-${String(index + 1).padStart(2, "0")}/${campaignFilename(activeJob)}`
             : getExportFilename({ pageUrl: url, imageUrl, template: activeTemplate, index }),
@@ -921,12 +975,30 @@ function App() {
                 <button className="button subtle" type="button" onClick={resetEditor} disabled={!selectedImage}>
                   Reset image
                 </button>
+                {manualSaleEnabled && <div className="manual-sale-pricing" role="group" aria-label="Manual sale prices">
+                  <strong>Manual sale prices</strong>
+                  <p>One-off sale image. No spreadsheet needed. Prices use the existing SALE template font and positions.</p>
+                  <label className="campaign-upload">Upload vehicle photo
+                    <input type="file" accept="image/jpeg,image/png,image/webp" aria-label="Upload vehicle photo"
+                      onChange={event => { uploadNormalImage(event.target.files?.[0]); event.target.value = ""; }} />
+                  </label>
+                  {["savePrice", "wasPrice", "nowPrice"].map(field => <label key={field}>
+                    {({ savePrice: "SAVE", wasPrice: "WAS", nowPrice: "NOW" })[field]}
+                    <input type="text" inputMode="decimal" aria-label={`Manual ${field.replace("Price", "").toUpperCase()}`}
+                      disabled={!selectedImage} placeholder={field === "savePrice" ? "Optional: calculated from WAS − NOW" : "e.g. £12,995"}
+                      value={selectedManualPrices[field]}
+                      onChange={event => changeManualPrice(field, event.target.value)} />
+                  </label>)}
+                  {manualPricing.error && <p className="campaign-warning" role="alert">{manualPricing.error}</p>}
+                  <button className="button ghost" type="button" disabled={!selectedImage}
+                    onClick={clearManualPrices}>Clear manual prices</button>
+                </div>}
                 {activeJob && <DynamicPriceControls job={activeJob} onChange={onJobChange} disabled={busy} />}
                 <button
                   className="button primary full"
                   type="button"
                   onClick={() => exportImage(Boolean(activeJob))}
-                  disabled={!selectedImage || !activeTemplate || busy}
+                  disabled={!selectedImage || !activeTemplate || busy || Boolean(manualPricing.error)}
                 >
                   {isExporting ? "Exporting" : activeJob ? "SAVE PNG & MARK DONE" : "Export PNG"}
                 </button>
@@ -936,7 +1008,7 @@ function App() {
                   className="button ghost full"
                   type="button"
                   onClick={exportAllImages}
-                  disabled={!images.length || !activeTemplate || busy}
+                  disabled={!images.length || !activeTemplate || busy || Boolean(manualPricing.error)}
                 >
                   {isExportingAll ? "Exporting All" : "Export All Images"}
                 </button>
