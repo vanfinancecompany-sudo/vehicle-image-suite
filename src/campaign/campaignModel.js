@@ -87,12 +87,12 @@ export function manualSalePriceJob(values = MANUAL_SALE_PRICE_FIELDS) {
     nowPrice: values.nowPrice,
     savePrice: values.savePrice,
   }, "manual-sale-preview");
+  if (job.wasPrice && job.nowPrice && job.nowPrice.value > job.wasPrice.value) {
+    return { job: null, error: "NOW must not be greater than WAS on a sale advert." };
+  }
   if (!job.wasPrice || !job.nowPrice || !job.savePrice
     || [job.wasPrice, job.nowPrice, job.savePrice].some(price => price.value < 0)) {
     return { job: null, error: "Enter valid WAS and NOW prices. SAVE is optional and calculates automatically." };
-  }
-  if (job.nowPrice.value > job.wasPrice.value) {
-    return { job: null, error: "NOW must not be greater than WAS on a sale advert." };
   }
   return { job, error: "" };
 }
