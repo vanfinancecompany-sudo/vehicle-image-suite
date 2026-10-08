@@ -299,6 +299,9 @@ test("removing active custom campaign template selects another valid template", 
 
 test("one-off SALE editor accepts local photo and manually entered SAVE/WAS/NOW without spreadsheet", async ({ page }) => {
   const errors = await setup(page);
+  // The suite intentionally defaults to Van Finance, not the sale overlay.
+  // Select the existing SALE template just as the user does in the editor.
+  await page.locator(".template-card").filter({ hasText: "Sale Fixture" }).locator(".template-select").click();
   const manual = page.getByRole("group", { name: "Manual sale prices" });
   await expect(manual).toBeVisible();
   const save = manual.getByLabel("Manual SAVE");
