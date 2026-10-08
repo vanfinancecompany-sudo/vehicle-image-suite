@@ -591,3 +591,22 @@
 button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible {
   outline: 2px solid #38bdf8; outline-offset: 3px;
 }
+
+/* One-off SALE artwork uses the same canvas price renderer as spreadsheet campaigns. */
+.manual-sale-pricing {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  background: #182336;
+}
+.manual-sale-pricing > strong { color: #f8fafc; }
+.manual-sale-pricing > p { margin: 0; color: #aebbd0; font-size: .8rem; line-height: 1.4; }
+.manual-sale-pricing > label { display: grid; gap: 5px; font-size: .82rem; color: #e2e8f0; }
+.manual-sale-pricing input[type="text"] {
+  min-width: 0; width: 100%; box-sizing: border-box;
+  padding: 9px 10px; border-radius: 8px;
+  border: 1px solid #475569; background: #0f172a; color: #f8fafc;
+}
+.manual-sale-pricing input:disabled { opacity: .6; }
