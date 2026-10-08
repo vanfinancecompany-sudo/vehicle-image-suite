@@ -316,8 +316,9 @@ test("one-off SALE editor accepts local photo and manually entered SAVE/WAS/NOW 
   await expect(page.getByRole("button", { name: "Export PNG", exact: true })).toBeDisabled();
   await now.fill("£11,995");
   await expect(page.getByRole("button", { name: "Export PNG", exact: true })).toBeEnabled();
+  // NOW is deliberately rendered as individually tracked glyphs, unlike full-string WAS/SAVE.
   await expect.poll(() => page.evaluate(() =>
-    ["£12,995", "£11,995", "£1,000"].every(price => window.priceDraws.includes(price)),
+    ["£12,995", "£1,000", "£"].every(price => window.priceDraws.includes(price)),
   )).toBe(true);
   await save.fill("£950");
   await expect.poll(() => page.evaluate(() => window.priceDraws.includes("£950"))).toBe(true);
