@@ -66,3 +66,33 @@ export function nextUnfinished(jobs, currentId) {
 export function newCampaign(name = "Vansco Sales Campaign") {
   return { version: 1, id: crypto.randomUUID(), name, templateId: "", jobs: [], activeJobId: "", enabled: false };
 }
+
+const MANUAL_SALE_PRICE_FIELDS = Object.freeze({ wasPrice: "", nowPrice: "", savePrice: "" });
+
+export function isSaleTemplate(template) {
+  if (!template) return false;
+  // Sale overlays are uploaded as custom templates; their filenames/names contain SALE.
+  // Never draw these values over the Finance or Rent2Buy templates.
+  return /(^|[^a-z])sale([^a-z]|$)/i.test([
+    template.id, template.name, template.category, template.fileLabel, template.filePath,
+  ].filter(Boolean).join(" "));
+}
+
+export function manualSalePriceJob(values = MANUAL_SALE_PRICE_FIELDS) {
+  const hasInput = PRICE_FIELDS.some(field => String(values?.[field] ?? "").trim());
+  if (!hasInput) return { job: null, error: "" };
+  const job = createJob({
+    registration: "MANUAL",
+    wasPrice: values.wasPrice,
+    nowPrice: values.nowPrice,
+    savePrice: values.savePrice,
+  }, "manual-sale-preview");
+  if (!job.wasPrice || !job.nowPrice || !job.savePrice
+    || [job.wasPrice, job.nowPrice, job.savePrice].some(price => price.value < 0)) {
+    return { job: null, error: "Enter valid WAS and NOW prices. SAVE is optional and calculates automatically." };
+  }
+  if (job.nowPrice.value > job.wasPrice.value) {
+    return { job: null, error: "NOW must not be greater than WAS on a sale advert." };
+  }
+  return { job, error: "" };
+}
