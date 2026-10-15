@@ -10,7 +10,8 @@ import "@fontsource/archivo-black/latin-400.css";
 import SalesCampaignPanel, { DynamicPriceControls } from "./campaign/SalesCampaignPanel.jsx";
 import VehicleThumbnail from "./campaign/VehicleThumbnail.jsx";
 import useCampaign from "./campaign/useCampaign.js";
-import { campaignFilename, DEFAULT_TRANSFORM, nextUnfinished, isSaleTemplate, manualSalePriceJob } from "./campaign/campaignModel.js";
+import { campaignFilename, DEFAULT_TRANSFORM, nextUnfinished, isSaleTemplate, manualSalePriceJob, createJob } from "./campaign/campaignModel.js";
+import { readSalePricesFromImage } from "./campaign/salePriceOcr.js";
 import { isUpload, readImage, storeImage, removeStoredImage } from "./campaign/campaignStorage.js";
 import { ensurePriceFont } from "./campaign/priceRenderer.js";
 
@@ -326,6 +327,9 @@ function App() {
   const [isExporting, setIsExporting] = useState(false);
   const [isExportingAll, setIsExportingAll] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [priceReadingJobId, setPriceReadingJobId] = useState("");
+  const [priceReadProgress, setPriceReadProgress] = useState("");
+  const priceReaderRunning = useRef(false);
   const busy = isExtracting || isExporting || isExportingAll || isUploading;
   const canvasRef = useRef(null);
   const drawSequence = useRef(0);
@@ -458,6 +462,77 @@ function App() {
     setStatus(nextImages.length + " images remaining.");
   };
 
+  // OCR suggestions are tied to the registration that started the scan, even
+  // if the operator switches vehicles before the browser finishes reading.
+  // Never overwrite confirmed or manually entered prices without approval.
+  const runPriceRead = async (job, references, maxImages = 8) => {
+    if (!job || !references?.length || priceReaderRunning.current) return;
+    priceReaderRunning.current = true;
+    setPriceReadingJobId(job.id);
+    setPriceReadProgress("Starting price reader...");
+    let suggestion = null;
+    let lastError = "";
+    try {
+      const shortlist = references.filter(Boolean).slice(0, maxImages);
+      for (let i = 0; i < shortlist.length; i += 1) {
+        const reference = shortlist[i];
+        setPriceReadProgress("Checking advert " + (i + 1) + " of " + shortlist.length);
+        try {
+          const image = await loadVehicleImage(reference);
+          const read = await readSalePricesFromImage(image, field =>
+            setPriceReadProgress("Image " + (i + 1) + "/" + shortlist.length +
+              " · reading " + field.toUpperCase()));
+          if (read.wasPrice && read.nowPrice) {
+            const candidate = {
+              status: read.ok ? "ready" : "review",
+              wasPrice: read.wasPrice, nowPrice: read.nowPrice,
+              savePrice: read.savePrice, warnings: read.warnings,
+              sourceImage: reference, recognisedText: read.recognisedText,
+              reviewed: false,
+            };
+            if (candidate.status === "ready") { suggestion = candidate; break; }
+            if (!suggestion) suggestion = candidate;
+          }
+        } catch (readError) {
+          lastError = readError.message || "Unable to read image";
+          if (/price reader|OCR|library|connection|language/i.test(lastError)) break;
+        }
+      }
+      if (!suggestion) suggestion = {
+        status: "not-found", warnings: [
+          lastError || "No readable WAS/NOW price boxes found in the checked pictures. Select the old sale artwork and read that image, or enter the prices manually.",
+        ],
+      };
+      updateCampaign(current => ({
+        ...current, jobs: current.jobs.map(item => item.id === job.id
+          ? { ...item, priceRead: suggestion } : item),
+      }));
+      setStatus(suggestion.status === "ready"
+        ? "Sale prices found for " + job.registration + ". Review and click Use Read Prices."
+        : "Price scan finished for " + job.registration + ". Manual checking is available.");
+    } finally {
+      priceReaderRunning.current = false;
+      setPriceReadingJobId("");
+      setPriceReadProgress("");
+    }
+  };
+
+  const applyReadPrices = () => {
+    const read = activeJob?.priceRead;
+    if (!read || read.status !== "ready") return;
+    const values = createJob({
+      registration: activeJob.registration, wasPrice: read.wasPrice,
+      nowPrice: read.nowPrice, savePrice: read.savePrice,
+    }, activeJob.id);
+    if (!values.wasPrice || !values.nowPrice || !values.savePrice || values.warnings.length) return;
+    onJobChange({
+      wasPrice: values.wasPrice, nowPrice: values.nowPrice,
+      savePrice: values.savePrice, warnings: [],
+      priceRead: { ...read, reviewed: true },
+    });
+    setStatus("Confirmed sale prices saved for " + activeJob.registration + ".");
+  };
+
   const extractImages = async (sourceUrl = url) => {
     if (busy) return;
     if (!sourceUrl.trim()) {
@@ -481,6 +556,11 @@ function App() {
         setNormalSelectedImage(extractedImages[0] || "");
         setNormalTransform({ ...DEFAULT_TRANSFORM });
         setManualPricesByImage({});
+      }
+      if (activeJob && extractedImages.length) {
+        // Automatic best-effort scan. The selected clean photo is unchanged;
+        // suggested figures still require explicit human approval.
+        void runPriceRead(activeJob, extractedImages, 6);
       }
       setStatus(
         extractedImages.length
@@ -884,6 +964,10 @@ function App() {
         <SalesCampaignPanel campaign={campaign} updateCampaign={updateCampaign} storageError={storageError}
           templates={templates} activeJob={activeJob} onSelect={selectJob} onExit={exitCampaign}
           onLoadImages={() => extractImages(activeJob.vehicleUrl)} onDealerKitImages={loadDealerKitImages} onUploadImage={uploadCampaignImage}
+          onPriceScan={() => runPriceRead(activeJob, activeJob.images)}
+          onPriceSelected={() => runPriceRead(activeJob, [activeJob.selectedImage], 1)}
+          onApplyReadPrices={applyReadPrices} priceReading={priceReadingJobId === activeJob?.id}
+          priceReadProgress={priceReadingJobId === activeJob?.id ? priceReadProgress : ""}
           onJobChange={onJobChange} busy={busy} onError={setError} onStatus={setStatus} />
         </div>
         <div className="panel editor-panel">
