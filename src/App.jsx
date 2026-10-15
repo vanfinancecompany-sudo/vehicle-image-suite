@@ -613,7 +613,7 @@ function App() {
     autoLoadedCampaignJobs.current.add(activeJob.id);
     void extractImages(activeJob.vehicleUrl);
     // Recheck when a previous vehicle finishes extracting/reading.
-  }, [activeJobId, busy, priceReadingJobId]);
+  }, [activeJob, activeJobId, busy, priceReadingJobId, extractImages]);
 
   const downloadZip = () => {
     const remoteImages = images.filter(reference => !isUpload(reference));
