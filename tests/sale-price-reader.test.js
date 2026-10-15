@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { amountsFromText, pricesFromSaleArtwork, SALE_PRICE_AREAS } from "../src/campaign/salePriceReader.js";
+import { amountsFromText, pricesFromSaleArtwork, SALE_PRICE_AREAS, SALE_NUMBER_AREAS } from "../src/campaign/salePriceReader.js";
 import { parseRows } from "../src/campaign/spreadsheetParser.js";
 
 test("extracts the BMW Oktoberfest advert's prices", () => {
@@ -18,10 +18,29 @@ test("calculates SAVE only when WAS and NOW are sensible", () => {
   assert.match(result.warnings.join(" "), /calculated/);
 });
 
-test("does not approve an incorrect printed saving", () => {
+test("crossed-out WAS OCR mismatch uses NOW plus SAVE but flags inference", () => {
+  const result = pricesFromSaleArtwork({ was: "£8,995", now: "£8,195", save: "£300" });
+  assert.equal(result.ok, true);
+  assert.deepEqual([result.wasPrice, result.nowPrice, result.savePrice], [8495, 8195, 300]);
+  assert.deepEqual(result.inferredFields, ["was"]);
+  assert.match(result.warnings.join(" "), /Confirm/);
+});
+
+test("matches alternate OCR readings by price arithmetic", () => {
+  const result = pricesFromSaleArtwork({
+    was: ["£8,995", "£8,495"], now: ["£8,195"], save: ["£300"],
+  });
+  assert.equal(result.ok, true);
+  assert.deepEqual([result.wasPrice, result.nowPrice, result.savePrice], [8495, 8195, 300]);
+  assert.deepEqual(result.inferredFields, []);
+});
+
+test("a misread saving is visibly flagged and calculated for confirmation", () => {
   const result = pricesFromSaleArtwork({ was: "£17,995", now: "£17,495", save: "£300" });
-  assert.equal(result.ok, false);
-  assert.match(result.warnings.join(" "), /does not equal/);
+  assert.equal(result.ok, true);
+  assert.deepEqual([result.wasPrice, result.nowPrice, result.savePrice], [17795, 17495, 300]);
+  assert.deepEqual(result.inferredFields, ["was"]);
+  assert.ok(result.warnings.length);
 });
 
 test("does not approve upside-down prices or unreadable artwork", () => {
@@ -34,7 +53,7 @@ test("understands OCR noise after a price", () => {
 });
 
 test("each OCR crop remains within the sale artwork", () => {
-  for (const area of Object.values(SALE_PRICE_AREAS)) {
+  for (const area of [...Object.values(SALE_PRICE_AREAS), ...Object.values(SALE_NUMBER_AREAS)]) {
     assert.ok(area.x >= 0 && area.y >= 0 && area.width > 0 && area.height > 0);
     assert.ok(area.x + area.width <= 1 && area.y + area.height <= 1);
   }
