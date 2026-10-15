@@ -330,6 +330,7 @@ function App() {
   const [priceReadingJobId, setPriceReadingJobId] = useState("");
   const [priceReadProgress, setPriceReadProgress] = useState("");
   const priceReaderRunning = useRef(false);
+  const autoLoadedCampaignJobs = useRef(new Set());
   const busy = isExtracting || isExporting || isExportingAll || isUploading;
   const canvasRef = useRef(null);
   const drawSequence = useRef(0);
@@ -602,6 +603,17 @@ function App() {
       setStatus("Existing photos kept. Upload Image and Load Images From URL remain available.");
     } finally { setIsExtracting(false); }
   };
+
+  // In a sales campaign the operator can simply click a registration.
+  // Retrieve its URL images automatically once; never retry a broken URL in
+  // a render loop. Manual Load Images From URL remains available.
+  useEffect(() => {
+    if (!activeJob || !activeJob.vehicleUrl || activeJob.images.length ||
+      busy || priceReadingJobId || autoLoadedCampaignJobs.current.has(activeJob.id)) return;
+    autoLoadedCampaignJobs.current.add(activeJob.id);
+    void extractImages(activeJob.vehicleUrl);
+    // Recheck when a previous vehicle finishes extracting/reading.
+  }, [activeJobId, busy, priceReadingJobId]);
 
   const downloadZip = () => {
     const remoteImages = images.filter(reference => !isUpload(reference));
