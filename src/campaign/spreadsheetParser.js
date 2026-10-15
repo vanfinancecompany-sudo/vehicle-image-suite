@@ -16,9 +16,9 @@ export function parseRows(rows) {
   const headers = rows[headerIndex].map(normalize);
   const columns = Object.fromEntries(Object.entries(aliases).map(([field, names]) =>
     [field, headers.findIndex(header => names.includes(header))]));
-  if (columns.wasPrice < 0 || columns.nowPrice < 0) {
-    throw new Error("Include WAS / Retail Price and NOW / New Sales Price columns.");
-  }
+  // Price-reading campaigns may start with only Registration + Vehicle URL.
+  // Existing price-drop spreadsheets continue to import their WAS/NOW/SAVE.
+  // Missing prices stay blank until a human confirms the OCR suggestion.
   const jobs = rows.slice(headerIndex + 1)
     .filter(row => row.some(cell => cell != null && String(cell).trim() !== ""))
     .map(row => createJob(Object.fromEntries(Object.entries(columns)
