@@ -70,6 +70,7 @@ function VehicleForm({ job, onSave, disabled }) {
 export default function SalesCampaignPanel({
   campaign, updateCampaign, storageError, templates, activeJob,
   onSelect, onExit, onLoadImages, onDealerKitImages, onUploadImage, onJobChange, busy, onError, onStatus,
+  onPriceScan, onPriceSelected, onApplyReadPrices, priceReading, priceReadProgress,
 }) {
   const [filter, setFilter] = useState("Remaining");
   const [search, setSearch] = useState("");
@@ -140,10 +141,46 @@ export default function SalesCampaignPanel({
           <input type="file" accept="image/jpeg,image/png,image/webp" aria-label="Upload Image" disabled={disabled}
             onChange={event => { onUploadImage(event.target.files?.[0]); event.target.value = ""; }} />
         </label>
+        <section className="sale-price-reader" aria-label="Read prices from previous sale artwork">
+          <strong>Reuse prices from existing advert</strong>
+          <p>Load the Vansco URL to look for an Oktoberfest-style advert. The old artwork is only a price reference; select a clean vehicle photo for the Halloween or Christmas export.</p>
+          <div className="campaign-actions">
+            <button className="button primary" type="button"
+              disabled={disabled || priceReading || !activeJob.images.length}
+              onClick={onPriceScan}>Scan loaded images for prices</button>
+            <button className="button subtle" type="button"
+              disabled={disabled || priceReading || !activeJob.selectedImage}
+              onClick={onPriceSelected}>Read selected image</button>
+          </div>
+          {priceReading && <p role="status">Reading advert prices locally... {priceReadProgress}</p>}
+          {activeJob.priceRead && !priceReading && <div className="price-read-result" role="status">
+            {activeJob.priceRead.status === "ready" && <strong>
+              Found WAS {formatPrice({ value: activeJob.priceRead.wasPrice })} ·
+              NOW {formatPrice({ value: activeJob.priceRead.nowPrice })} ·
+              SAVE {formatPrice({ value: activeJob.priceRead.savePrice })}
+            </strong>}
+            {activeJob.priceRead.status === "review" && <strong>
+              Possible prices found, but validation failed. Check the original artwork and edit manually.
+            </strong>}
+            {activeJob.priceRead.status === "not-found" && <strong>No reliable sale advert prices found.</strong>}
+            {activeJob.priceRead.sourceImage && <div className="price-read-source">
+              <span>Price reference image (not used for export):</span>
+              <VehicleThumbnail reference={activeJob.priceRead.sourceImage} alt="Previous sale advert used to read prices" />
+            </div>}
+            {(activeJob.priceRead.warnings || []).map((warning, index) =>
+              <p className="campaign-warning" key={index}>{warning}</p>)}
+            {activeJob.priceRead.status === "ready" && <button
+              className="button primary" type="button" disabled={disabled}
+              onClick={onApplyReadPrices}>
+              {activeJob.priceRead.reviewed ? "Use Read Prices Again" : "Use Read Prices (confirm)"}
+            </button>}
+            {activeJob.priceRead.reviewed && <p>Prices confirmed. Select the clean vehicle photo before exporting.</p>}
+          </div>}
+        </section>
         <button className="button ghost" disabled={disabled} onClick={() => onJobChange({ done: !activeJob.done })}>
           Mark {activeJob.done ? "Not Done" : "Done"}
         </button>
-        <details><summary>Edit active vehicle</summary>
+        <details><summary>Edit active vehicle / correct WAS, NOW and SAVE manually</summary>
           <VehicleForm key={activeJob.id + "-" + [activeJob.registration, activeJob.location, activeJob.wasPrice?.value, activeJob.nowPrice?.value, activeJob.savePrice?.value, activeJob.vehicleUrl].join("|")} job={activeJob} disabled={disabled}
             onSave={parsed => onJobChange({
               registration: parsed.registration, location: parsed.location, vehicleUrl: parsed.vehicleUrl,
