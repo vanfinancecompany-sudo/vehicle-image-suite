@@ -1,6 +1,6 @@
 // Read price values from the three fixed regions of Vansco's sale artwork.
 // This file is deliberately independent of the OCR engine so it can be tested.
-const PRICE_PATTERN = /\b\d{1,3}(?:[,\s]\d{3})+(?:\.\d{2})?\b|\b\d{3,6}(?:\.\d{2})?\b/g;
+const PRICE_PATTERN = /\b\d{1,3}(?:[,\s]\d{3})+(?:\.\d{2})?(?=\D|$)|\b\d{3,6}(?:\.\d{2})?(?=\D|$)/g;
 
 export function amountsFromText(text) {
   const normalised = String(text || "")
