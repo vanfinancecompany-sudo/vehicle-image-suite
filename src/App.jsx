@@ -620,7 +620,7 @@ function App() {
     } finally { setIsExtracting(false); }
   };
 
-  extractImagesRef.current = extractImages;
+  useEffect(() => { extractImagesRef.current = extractImages; });
 
   // In a sales campaign the operator can simply click a registration.
   // Retrieve its URL images automatically once; never retry a broken URL in
