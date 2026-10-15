@@ -1,4 +1,5 @@
 import { useState } from "react";
+import VehicleThumbnail from "./VehicleThumbnail.jsx";
 import { createJob, formatPrice, newCampaign, PRICE_FIELDS } from "./campaignModel.js";
 import { parseSpreadsheet } from "./spreadsheetParser.js";
 import { PRICE_FONTS, pricePosition } from "./priceRenderer.js";
