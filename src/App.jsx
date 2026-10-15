@@ -466,7 +466,7 @@ function App() {
   // OCR suggestions are tied to the registration that started the scan, even
   // if the operator switches vehicles before the browser finishes reading.
   // Never overwrite confirmed or manually entered prices without approval.
-  const runPriceRead = async (job, references, maxImages = 8) => {
+  const runPriceRead = async (job, references) => {
     if (!job || !references?.length || priceReaderRunning.current) return;
     priceReaderRunning.current = true;
     setPriceReadingJobId(job.id);
@@ -474,7 +474,8 @@ function App() {
     let suggestion = null;
     let lastError = "";
     try {
-      const shortlist = references.filter(Boolean).slice(0, maxImages);
+      // Image 1 is the existing Vansco sale advert; do not scan the remaining gallery.
+      const shortlist = references.filter(Boolean).slice(0, 1);
       for (let i = 0; i < shortlist.length; i += 1) {
         const reference = shortlist[i];
         setPriceReadProgress("Checking advert " + (i + 1) + " of " + shortlist.length);
@@ -487,7 +488,7 @@ function App() {
             const candidate = {
               status: read.ok ? "ready" : "review",
               wasPrice: read.wasPrice, nowPrice: read.nowPrice,
-              savePrice: read.savePrice, warnings: read.warnings,
+              savePrice: read.savePrice, warnings: read.warnings, inferredFields: read.inferredFields,
               sourceImage: reference, recognisedText: read.recognisedText,
               reviewed: false,
             };
@@ -561,7 +562,7 @@ function App() {
       if (activeJob && extractedImages.length) {
         // Automatic best-effort scan. The selected clean photo is unchanged;
         // suggested figures still require explicit human approval.
-        void runPriceRead(activeJob, extractedImages, 6);
+        void runPriceRead(activeJob, [extractedImages[0]]);
       }
       setStatus(
         extractedImages.length
@@ -976,8 +977,8 @@ function App() {
         <SalesCampaignPanel campaign={campaign} updateCampaign={updateCampaign} storageError={storageError}
           templates={templates} activeJob={activeJob} onSelect={selectJob} onExit={exitCampaign}
           onLoadImages={() => extractImages(activeJob.vehicleUrl)} onDealerKitImages={loadDealerKitImages} onUploadImage={uploadCampaignImage}
-          onPriceScan={() => runPriceRead(activeJob, activeJob.images)}
-          onPriceSelected={() => runPriceRead(activeJob, [activeJob.selectedImage], 1)}
+          onPriceScan={() => runPriceRead(activeJob, activeJob.images.slice(0, 1))}
+          onPriceSelected={() => runPriceRead(activeJob, [activeJob.selectedImage])}
           onApplyReadPrices={applyReadPrices} priceReading={priceReadingJobId === activeJob?.id}
           priceReadProgress={priceReadingJobId === activeJob?.id ? priceReadProgress : ""}
           onJobChange={onJobChange} busy={busy} onError={setError} onStatus={setStatus} />
