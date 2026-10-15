@@ -144,16 +144,16 @@ export default function SalesCampaignPanel({
         </label>
         <section className="sale-price-reader" aria-label="Read prices from previous sale artwork">
           <strong>Reuse prices from existing advert</strong>
-          <p>Load the Vansco URL to look for an Oktoberfest-style advert. The old artwork is only a price reference; select a clean vehicle photo for the Halloween or Christmas export.</p>
+          <p>The previous sale advert is always Image 1. Read only that picture for WAS, NOW and SAVE; select a clean vehicle photo for the new template after confirming the figures.</p>
           <div className="campaign-actions">
             <button className="button primary" type="button"
               disabled={disabled || priceReading || !activeJob.images.length}
-              onClick={onPriceScan}>Scan loaded images for prices</button>
+              onClick={onPriceScan}>Read prices from Image 1</button>
             <button className="button subtle" type="button"
               disabled={disabled || priceReading || !activeJob.selectedImage}
               onClick={onPriceSelected}>Read selected image</button>
           </div>
-          {priceReading && <p role="status">Reading advert prices locally... {priceReadProgress}</p>}
+          {priceReading && <p role="status">Reading Image 1 locally... {priceReadProgress}</p>}
           {activeJob.priceRead && !priceReading && <div className="price-read-result" role="status">
             {activeJob.priceRead.status === "ready" && <strong>
               Found WAS {formatPrice({ value: activeJob.priceRead.wasPrice })} ·
@@ -161,13 +161,26 @@ export default function SalesCampaignPanel({
               SAVE {formatPrice({ value: activeJob.priceRead.savePrice })}
             </strong>}
             {activeJob.priceRead.status === "review" && <strong>
-              Possible prices found, but validation failed. Check the original artwork and edit manually.
+              Price reading needs checking. Original values recognised:
+              WAS {formatPrice(activeJob.priceRead.wasPrice && { value: activeJob.priceRead.wasPrice })} ·
+              NOW {formatPrice(activeJob.priceRead.nowPrice && { value: activeJob.priceRead.nowPrice })} ·
+              SAVE {formatPrice(activeJob.priceRead.savePrice && { value: activeJob.priceRead.savePrice })}
             </strong>}
             {activeJob.priceRead.status === "not-found" && <strong>No reliable sale advert prices found.</strong>}
             {activeJob.priceRead.sourceImage && <div className="price-read-source">
               <span>Price reference image (not used for export):</span>
               <VehicleThumbnail reference={activeJob.priceRead.sourceImage} alt="Previous sale advert used to read prices" />
             </div>}
+            {activeJob.priceRead.inferredFields?.length > 0 && <p>
+              One or more amounts were calculated because a printed figure was unclear.
+              Please check the original picture before clicking Use Read Prices.
+            </p>}
+            {activeJob.priceRead.recognisedText && <details>
+              <summary>View text read from each price area</summary>
+              <pre style={{ whiteSpace: "pre-wrap", fontSize: 12, overflowWrap: "anywhere" }}>
+                {JSON.stringify(activeJob.priceRead.recognisedText, null, 2)}
+              </pre>
+            </details>}
             {(activeJob.priceRead.warnings || []).map((warning, index) =>
               <p className="campaign-warning" key={index}>{warning}</p>)}
             {activeJob.priceRead.status === "ready" && <button
