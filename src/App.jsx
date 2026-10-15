@@ -331,6 +331,7 @@ function App() {
   const [priceReadProgress, setPriceReadProgress] = useState("");
   const priceReaderRunning = useRef(false);
   const autoLoadedCampaignJobs = useRef(new Set());
+  const extractImagesRef = useRef(null);
   const busy = isExtracting || isExporting || isExportingAll || isUploading;
   const canvasRef = useRef(null);
   const drawSequence = useRef(0);
@@ -552,7 +553,21 @@ function App() {
       if (!response.ok) throw new Error(data.error || "Image extraction failed.");
 
       const extractedImages = Array.isArray(data.images) ? data.images : [];
-      if (activeJob) onJobChange({ images: [...extractedImages, ...activeJob.images.filter(isUpload)], selectedImage: extractedImages[0] || "", transform: { ...DEFAULT_TRANSFORM } });
+      if (activeJob) {
+        // Image 1 contains the OLD SALE graphic; never use it as the
+        // vehicle photo under the new Halloween/Christmas PNG overlay.
+        // On Vansco the second image can also be a promo, so prefer the
+        // third as a clean starting point. The user can change it.
+        const keepSelected = activeJob.selectedImage &&
+          activeJob.selectedImage !== extractedImages[0] &&
+          (extractedImages.includes(activeJob.selectedImage) || isUpload(activeJob.selectedImage));
+        const exportImage = keepSelected ? activeJob.selectedImage :
+          (extractedImages[2] || extractedImages[1] || "");
+        onJobChange({
+          images: [...extractedImages, ...activeJob.images.filter(isUpload)],
+          selectedImage: exportImage, transform: { ...DEFAULT_TRANSFORM },
+        });
+      }
       else {
         setNormalImages(extractedImages);
         setNormalSelectedImage(extractedImages[0] || "");
@@ -566,7 +581,7 @@ function App() {
       }
       setStatus(
         extractedImages.length
-          ? `Found ${extractedImages.length} full-size images. Image 1 selected.`
+          ? `Found ${extractedImages.length} images. Image 1 used for old prices; select a clean photo for export.`
           : "No images found on that page."
       );
     } catch (extractError) {
@@ -605,6 +620,8 @@ function App() {
     } finally { setIsExtracting(false); }
   };
 
+  extractImagesRef.current = extractImages;
+
   // In a sales campaign the operator can simply click a registration.
   // Retrieve its URL images automatically once; never retry a broken URL in
   // a render loop. Manual Load Images From URL remains available.
@@ -612,9 +629,9 @@ function App() {
     if (!activeJob || !activeJob.vehicleUrl || activeJob.images.length ||
       busy || priceReadingJobId || autoLoadedCampaignJobs.current.has(activeJob.id)) return;
     autoLoadedCampaignJobs.current.add(activeJob.id);
-    void extractImages(activeJob.vehicleUrl);
+    void extractImagesRef.current?.(activeJob.vehicleUrl);
     // Recheck when a previous vehicle finishes extracting/reading.
-  }, [activeJob, activeJobId, busy, priceReadingJobId, extractImages]);
+  }, [activeJob, activeJobId, busy, priceReadingJobId]);
 
   const downloadZip = () => {
     const remoteImages = images.filter(reference => !isUpload(reference));
