@@ -26,7 +26,9 @@ function loadTesseract() {
 async function getWorker() {
   if (!workerPromise) workerPromise = (async () => {
     const Tesseract = await loadTesseract();
-    return Tesseract.createWorker("eng");
+    const worker = await Tesseract.createWorker("eng");
+    await worker.setParameters({ tessedit_pageseg_mode: "6" });
+    return worker;
   })().catch(error => { workerPromise = null; throw error; });
   return workerPromise;
 }
