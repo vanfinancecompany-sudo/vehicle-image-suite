@@ -49,7 +49,7 @@ test("normal SAVE prices retain requested font height/width and stay clear of th
     const vehicle = job(); vehicle.savePrice.value = value;
     const box = priceGeometry(context(), vehicle, "savePrice");
     assert.equal(box.position.size, DEFAULT_PRICE_LAYOUT.savePrice.size);
-    assert.equal(box.x, DEFAULT_PRICE_LAYOUT.savePrice.x);
+    assert.equal(box.x, DEFAULT_PRICE_LAYOUT.savePrice.x + DEFAULT_PRICE_OFFSETS.savePrice.x);
     assert.ok(box.x >= SAVE_SAFE_AREA.left && box.x + box.width <= SAVE_SAFE_AREA.right + 1e-8);
     assert.ok(box.y >= SAVE_SAFE_AREA.top && box.y + box.height <= SAVE_SAFE_AREA.bottom + 1e-8);
     if (value < 10000) assert.equal(box.position.widthScale, DEFAULT_PRICE_LAYOUT.savePrice.widthScale);
@@ -59,7 +59,7 @@ test("genuinely long SAVE shrinks width before height without moving the left an
   const vehicle = job(); vehicle.savePrice.value = 1000000000000;
   const box = priceGeometry(context(), vehicle, "savePrice");
   assert.equal(box.position.size, DEFAULT_PRICE_LAYOUT.savePrice.size);
-  assert.equal(box.x, DEFAULT_PRICE_LAYOUT.savePrice.x);
+  assert.equal(box.x, DEFAULT_PRICE_LAYOUT.savePrice.x + DEFAULT_PRICE_OFFSETS.savePrice.x);
   assert.ok(box.position.widthScale < DEFAULT_PRICE_LAYOUT.savePrice.widthScale);
   assert.equal(box.x + box.width, SAVE_SAFE_AREA.right);
 });
