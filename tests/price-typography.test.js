@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { DEFAULT_PRICE_LAYOUT, SAVE_SAFE_AREA, PRICE_DEFAULTS_REVISION, migrateCampaignPriceDefaults } from "../src/campaign/priceDefaults.js";
 import { drawPrices, priceGeometry } from "../src/campaign/priceRenderer.js";
 import { loadCampaign, saveCampaign } from "../src/campaign/campaignStorage.js";
-import { createJob, newCampaign, PRICE_FIELDS } from "../src/campaign/campaignModel.js";
+import { createJob, newCampaign, PRICE_FIELDS, DEFAULT_PRICE_OFFSETS, migrateCampaignSaveOffsets, SAVE_OFFSET_REVISION } from "../src/campaign/campaignModel.js";
 
 function context() {
   return { font: "", save() {}, restore() {}, translate() {}, scale() {},
@@ -222,4 +222,48 @@ test("horizontal calibration changes only WAS/NOW X once and preserves manual ma
     Object.assign(manual.priceLayout[field], patch);
     assert.equal(migrateCampaignPriceDefaults(manual), manual);
   }
+});
+
+test("new campaign vehicles start SAVE at exactly +30px and honour the master safe area", () => {
+  const vehicle = createJob({ registration: "BP73 XUH", wasPrice: "22495", nowPrice: "21995", savePrice: "500" });
+  assert.deepEqual(vehicle.priceOffsets.savePrice, { x: 30, y: 0 });
+  assert.deepEqual(vehicle.priceOffsets.wasPrice, { x: 0, y: 0 });
+  assert.deepEqual(vehicle.priceOffsets.nowPrice, { x: 0, y: 0 });
+  const box = priceGeometry(context(), vehicle, "savePrice");
+  assert.equal(box.x, DEFAULT_PRICE_LAYOUT.savePrice.x + 30);
+  assert.ok(box.x + box.width <= SAVE_SAFE_AREA.right);
+  assert.equal(newCampaign().saveOffsetRevision, SAVE_OFFSET_REVISION);
+});
+
+test("previously loaded queues receive SAVE +30 once, never +60", () => {
+  const campaign = newCampaign();
+  delete campaign.saveOffsetRevision;
+  const existing = createJob({ registration: "AE68 WCF", wasPrice: "8495", nowPrice: "8195", savePrice: "300" });
+  existing.priceOffsets.savePrice = { x: 0, y: 0 };
+  const alreadyAligned = createJob({ registration: "BP73 XUH", wasPrice: "22495", nowPrice: "21995", savePrice: "500" });
+  alreadyAligned.priceOffsets.savePrice = { x: 30, y: 0 };
+  const bespoke = createJob({ registration: "OTHER", wasPrice: "2000", nowPrice: "1700", savePrice: "300" });
+  bespoke.priceOffsets.savePrice = { x: 17, y: 4 };
+  campaign.jobs = [existing, alreadyAligned, bespoke];
+  const migrated = migrateCampaignSaveOffsets(campaign);
+  assert.deepEqual(migrated.jobs.map(v => v.priceOffsets.savePrice),
+    [{ x: 30, y: 0 }, { x: 30, y: 0 }, { x: 17, y: 4 }]);
+  assert.equal(migrateCampaignSaveOffsets(migrated), migrated);
+  assert.equal(campaign.jobs[0].priceOffsets.savePrice.x, 0);
+  const saved = JSON.stringify(campaign);
+  let persisted = saved;
+  const storage = { getItem: () => persisted, setItem: (_, value) => { persisted = value; } };
+  const loaded = loadCampaign(storage);
+  assert.equal(loaded.jobs[0].priceOffsets.savePrice.x, 30);
+  saveCampaign(loaded, storage);
+  assert.deepEqual(loadCampaign(storage), loaded);
+});
+
+test("legacy vehicles missing SAVE offsets fall back to +30 without modifying WAS/NOW", () => {
+  const vehicle = createJob({ registration: "AB11 CDE", wasPrice: "9950", nowPrice: "9450", savePrice: "500" });
+  delete vehicle.priceOffsets.savePrice;
+  const save = priceGeometry(context(), vehicle, "savePrice");
+  assert.equal(save.x, DEFAULT_PRICE_LAYOUT.savePrice.x + DEFAULT_PRICE_OFFSETS.savePrice.x);
+  assert.equal(priceGeometry(context(), vehicle, "wasPrice").x, DEFAULT_PRICE_LAYOUT.wasPrice.x);
+  assert.equal(priceGeometry(context(), vehicle, "nowPrice").x, DEFAULT_PRICE_LAYOUT.nowPrice.x);
 });
