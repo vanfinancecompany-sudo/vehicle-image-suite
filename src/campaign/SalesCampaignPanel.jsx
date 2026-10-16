@@ -1,5 +1,6 @@
 import { useState } from "react";
 import VehicleThumbnail from "./VehicleThumbnail.jsx";
+import ManualOverrideControls from "./ManualOverrideControls.jsx";
 import { createJob, formatPrice, newCampaign, PRICE_FIELDS, DEFAULT_PRICE_OFFSETS } from "./campaignModel.js";
 import { parseSpreadsheet } from "./spreadsheetParser.js";
 import { PRICE_FONTS, pricePosition } from "./priceRenderer.js";
@@ -138,10 +139,6 @@ export default function SalesCampaignPanel({
         {activeJob.warnings.map(warning => <p className="campaign-warning" role="status" key={warning}>{warning}</p>)}
         <button className="button primary" disabled={disabled || !activeJob.registration} onClick={onDealerKitImages}>LOAD DEALERKIT IMAGES</button>
         <button className="button primary" disabled={disabled || !activeJob.vehicleUrl} onClick={onLoadImages}>Load Images From URL</button>
-        <label className="campaign-upload">Upload Image
-          <input type="file" accept="image/jpeg,image/png,image/webp" aria-label="Upload Image" disabled={disabled}
-            onChange={event => { onUploadImage(event.target.files?.[0]); event.target.value = ""; }} />
-        </label>
         <section className="sale-price-reader" aria-label="Read prices from previous sale artwork">
           <strong>Reuse prices from existing advert</strong>
           <p>The previous sale advert is always Image 1. Read only that picture for WAS, NOW and SAVE; select a clean vehicle photo for the new template after confirming the figures.</p>
@@ -154,7 +151,7 @@ export default function SalesCampaignPanel({
               onClick={onPriceSelected}>Read selected image</button>
           </div>
           {priceReading && <p role="status">Reading Image 1 locally... {priceReadProgress}</p>}
-          {activeJob.priceRead && !priceReading && <div className="price-read-result" role="status">
+          {activeJob.priceRead && activeJob.priceRead.status !== "manual" && !priceReading && <div className="price-read-result" role="status">
             {activeJob.priceRead.status === "ready" && <strong>
               Found WAS {formatPrice({ value: activeJob.priceRead.wasPrice })} ·
               NOW {formatPrice({ value: activeJob.priceRead.nowPrice })} ·
@@ -191,10 +188,19 @@ export default function SalesCampaignPanel({
             {activeJob.priceRead.reviewed && <p>Prices confirmed. Select the clean vehicle photo before exporting.</p>}
           </div>}
         </section>
+        <ManualOverrideControls key={activeJob.id} job={activeJob} disabled={disabled}
+          onUploadImage={onUploadImage} onApplyPrices={prices => {
+            const saved = onJobChange({
+              ...prices, warnings: [],
+              priceRead: { status: "manual", reviewed: true },
+            });
+            if (saved) onStatus("Manual WAS, NOW and SAVE saved for " + activeJob.registration + ".");
+            return saved;
+          }} />
         <button className="button ghost" disabled={disabled} onClick={() => onJobChange({ done: !activeJob.done })}>
           Mark {activeJob.done ? "Not Done" : "Done"}
         </button>
-        <details><summary>Edit active vehicle / correct WAS, NOW and SAVE manually</summary>
+        <details><summary>Advanced: edit registration, location or vehicle URL</summary>
           <VehicleForm key={activeJob.id + "-" + [activeJob.registration, activeJob.location, activeJob.wasPrice?.value, activeJob.nowPrice?.value, activeJob.savePrice?.value, activeJob.vehicleUrl].join("|")} job={activeJob} disabled={disabled}
             onSave={parsed => onJobChange({
               registration: parsed.registration, location: parsed.location, vehicleUrl: parsed.vehicleUrl,
