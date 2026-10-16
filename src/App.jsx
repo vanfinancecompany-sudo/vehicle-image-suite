@@ -507,7 +507,7 @@ function App() {
         ],
       };
       updateCampaign(current => ({
-        ...current, jobs: current.jobs.map(item => item.id === job.id
+        ...current, jobs: current.jobs.map(item => item.id === job.id && item.priceRead?.status !== "manual"
           ? { ...item, priceRead: suggestion } : item),
       }));
       setStatus(suggestion.status === "ready"
