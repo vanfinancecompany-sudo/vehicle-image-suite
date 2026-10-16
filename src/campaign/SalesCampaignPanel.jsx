@@ -1,6 +1,6 @@
 import { useState } from "react";
 import VehicleThumbnail from "./VehicleThumbnail.jsx";
-import { createJob, formatPrice, newCampaign, PRICE_FIELDS } from "./campaignModel.js";
+import { createJob, formatPrice, newCampaign, PRICE_FIELDS, DEFAULT_PRICE_OFFSETS } from "./campaignModel.js";
 import { parseSpreadsheet } from "./spreadsheetParser.js";
 import { PRICE_FONTS, pricePosition } from "./priceRenderer.js";
 import { PRICE_DEFAULTS_REVISION } from "./priceDefaults.js";
@@ -9,7 +9,7 @@ const label = field => field.replace("Price", "").toUpperCase();
 
 export function DynamicPriceControls({ job, onChange, disabled, }) {
   const [field, setField] = useState("nowPrice");
-  const offset = job.priceOffsets[field] || { x: 0, y: 0 };
+  const offset = job.priceOffsets[field] || DEFAULT_PRICE_OFFSETS[field];
   const move = (x, y = offset.y) => onChange({
     priceOffsets: { ...job.priceOffsets, [field]: { x, y } },
   });
@@ -25,7 +25,7 @@ export function DynamicPriceControls({ job, onChange, disabled, }) {
       <span>{offset.x}px</span>
       <button className="button subtle" aria-label={"Move " + label(field) + " right 2 pixels"} disabled={disabled} onClick={() => move(offset.x + 2)}>→</button>
     </div>
-    <button className="button ghost" disabled={disabled} onClick={() => move(0, 0)}>Reset Price Position</button>
+    <button className="button ghost" disabled={disabled} onClick={() => move(DEFAULT_PRICE_OFFSETS[field].x, DEFAULT_PRICE_OFFSETS[field].y)}>Reset Price Position</button>
     <details><summary>Advanced price position</summary>
       {["x", "y"].map(axis => <label key={axis} className="range-row">{axis.toUpperCase()} offset (px)
         <input type="number" value={offset[axis]} disabled={disabled}
