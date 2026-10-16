@@ -634,3 +634,28 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
   border: 1px solid rgba(200, 211, 224, .25);
   border-radius: 5px;
 }
+
+
+/* First-class fallback for difficult sale adverts; always visible in the queue. */
+.campaign-manual-override {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #3b82a0;
+  border-radius: 10px;
+  background: rgba(9, 66, 81, .18);
+}
+.campaign-manual-override > strong { font-size: .98rem; color: #eafcff; }
+.campaign-manual-override p { margin: 0; line-height: 1.45; }
+.campaign-manual-price-form { display: grid; gap: 10px; }
+.campaign-manual-price-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.campaign-manual-price-fields label { min-width: 0; }
+.campaign-manual-price-fields input { width: 100%; min-width: 0; }
+.manual-override-success { color: #74dfc2; font-weight: 600; }
+@media (max-width: 620px) {
+  .campaign-manual-price-fields { grid-template-columns: 1fr; }
+}
