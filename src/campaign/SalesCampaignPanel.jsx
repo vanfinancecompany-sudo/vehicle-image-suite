@@ -188,7 +188,7 @@ export default function SalesCampaignPanel({
             {activeJob.priceRead.reviewed && <p>Prices confirmed. Select the clean vehicle photo before exporting.</p>}
           </div>}
         </section>
-        <ManualOverrideControls key={activeJob.id} job={activeJob} disabled={disabled}
+        <ManualOverrideControls key={activeJob.id + "-" + [activeJob.wasPrice?.value, activeJob.nowPrice?.value, activeJob.savePrice?.value].join("|")} job={activeJob} disabled={disabled}
           onUploadImage={onUploadImage} onApplyPrices={prices => {
             const saved = onJobChange({
               ...prices, warnings: [],
