@@ -200,7 +200,7 @@ export default function SalesCampaignPanel({
         <button className="button ghost" disabled={disabled} onClick={() => onJobChange({ done: !activeJob.done })}>
           Mark {activeJob.done ? "Not Done" : "Done"}
         </button>
-        <details><summary>Advanced: edit registration, location or vehicle URL</summary>
+        <details><summary>Advanced: edit vehicle details</summary>
           <VehicleForm key={activeJob.id + "-" + [activeJob.registration, activeJob.location, activeJob.wasPrice?.value, activeJob.nowPrice?.value, activeJob.savePrice?.value, activeJob.vehicleUrl].join("|")} job={activeJob} disabled={disabled}
             onSave={parsed => onJobChange({
               registration: parsed.registration, location: parsed.location, vehicleUrl: parsed.vehicleUrl,
