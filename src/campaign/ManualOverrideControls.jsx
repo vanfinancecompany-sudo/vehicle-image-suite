@@ -1,17 +1,10 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { isUpload } from "./campaignStorage.js";
 import { manualPriceInputs, parseManualPriceOverride } from "./manualOverride.js";
 
 export default function ManualOverrideControls({ job, disabled, onUploadImage, onApplyPrices }) {
   const [values, setValues] = useState(() => manualPriceInputs(job));
   const [error, setError] = useState("");
-
-  // Selecting a different registration, or accepting an OCR suggestion,
-  // refreshes the inputs. Unsaved edits are not overwritten on other renders.
-  useEffect(() => {
-    setValues(manualPriceInputs(job));
-    setError("");
-  }, [job.id, job.wasPrice?.value, job.nowPrice?.value, job.savePrice?.value]);
 
   const apply = event => {
     event.preventDefault();
