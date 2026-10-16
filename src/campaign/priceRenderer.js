@@ -1,4 +1,4 @@
-import { formatPrice, PRICE_FIELDS } from "./campaignModel.js";
+import { formatPrice, PRICE_FIELDS, DEFAULT_PRICE_OFFSETS } from "./campaignModel.js";
 
 import { PRICE_FONTS, DEFAULT_PRICE_LAYOUT, SAVE_SAFE_AREA } from "./priceDefaults.js";
 export { PRICE_FONTS, DEFAULT_PRICE_LAYOUT } from "./priceDefaults.js";
@@ -44,7 +44,7 @@ function applyPriceFont(ctx, position) {
 export function priceGeometry(ctx, job, field, layout) {
   if (!job[field]) return null;
   const position = pricePosition(layout, field);
-  const offset = job.priceOffsets[field] || { x: 0, y: 0 };
+  const offset = job.priceOffsets?.[field] || DEFAULT_PRICE_OFFSETS[field];
   const text = formatPrice(job[field]);
   function measure(size) {
     applyPriceFont(ctx, { ...position, size });

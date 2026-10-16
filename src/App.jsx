@@ -10,7 +10,8 @@ import "@fontsource/archivo-black/latin-400.css";
 import SalesCampaignPanel, { DynamicPriceControls } from "./campaign/SalesCampaignPanel.jsx";
 import VehicleThumbnail from "./campaign/VehicleThumbnail.jsx";
 import useCampaign from "./campaign/useCampaign.js";
-import { campaignFilename, DEFAULT_TRANSFORM, nextUnfinished, isSaleTemplate, manualSalePriceJob } from "./campaign/campaignModel.js";
+import { campaignFilename, DEFAULT_TRANSFORM, nextUnfinished, isSaleTemplate, manualSalePriceJob, createJob } from "./campaign/campaignModel.js";
+import { readSalePricesFromImage } from "./campaign/salePriceOcr.js";
 import { isUpload, readImage, storeImage, removeStoredImage } from "./campaign/campaignStorage.js";
 import { ensurePriceFont } from "./campaign/priceRenderer.js";
 
@@ -326,6 +327,11 @@ function App() {
   const [isExporting, setIsExporting] = useState(false);
   const [isExportingAll, setIsExportingAll] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [priceReadingJobId, setPriceReadingJobId] = useState("");
+  const [priceReadProgress, setPriceReadProgress] = useState("");
+  const priceReaderRunning = useRef(false);
+  const autoLoadedCampaignJobs = useRef(new Set());
+  const extractImagesRef = useRef(null);
   const busy = isExtracting || isExporting || isExportingAll || isUploading;
   const canvasRef = useRef(null);
   const drawSequence = useRef(0);
@@ -458,6 +464,78 @@ function App() {
     setStatus(nextImages.length + " images remaining.");
   };
 
+  // OCR suggestions are tied to the registration that started the scan, even
+  // if the operator switches vehicles before the browser finishes reading.
+  // Never overwrite confirmed or manually entered prices without approval.
+  const runPriceRead = async (job, references) => {
+    if (!job || !references?.length || priceReaderRunning.current) return;
+    priceReaderRunning.current = true;
+    setPriceReadingJobId(job.id);
+    setPriceReadProgress("Starting price reader...");
+    let suggestion = null;
+    let lastError = "";
+    try {
+      // Image 1 is the existing Vansco sale advert; do not scan the remaining gallery.
+      const shortlist = references.filter(Boolean).slice(0, 1);
+      for (let i = 0; i < shortlist.length; i += 1) {
+        const reference = shortlist[i];
+        setPriceReadProgress("Checking advert " + (i + 1) + " of " + shortlist.length);
+        try {
+          const image = await loadVehicleImage(reference);
+          const read = await readSalePricesFromImage(image, field =>
+            setPriceReadProgress("Image " + (i + 1) + "/" + shortlist.length +
+              " · reading " + field.toUpperCase()));
+          if (read.wasPrice && read.nowPrice) {
+            const candidate = {
+              status: read.ok ? "ready" : "review",
+              wasPrice: read.wasPrice, nowPrice: read.nowPrice,
+              savePrice: read.savePrice, warnings: read.warnings, inferredFields: read.inferredFields,
+              sourceImage: reference, recognisedText: read.recognisedText,
+              reviewed: false,
+            };
+            if (candidate.status === "ready") { suggestion = candidate; break; }
+            if (!suggestion) suggestion = candidate;
+          }
+        } catch (readError) {
+          lastError = readError.message || "Unable to read image";
+          if (/price reader|OCR|library|connection|language/i.test(lastError)) break;
+        }
+      }
+      if (!suggestion) suggestion = {
+        status: "not-found", warnings: [
+          lastError || "No readable WAS/NOW price boxes found in the checked pictures. Select the old sale artwork and read that image, or enter the prices manually.",
+        ],
+      };
+      updateCampaign(current => ({
+        ...current, jobs: current.jobs.map(item => item.id === job.id
+          ? { ...item, priceRead: suggestion } : item),
+      }));
+      setStatus(suggestion.status === "ready"
+        ? "Sale prices found for " + job.registration + ". Review and click Use Read Prices."
+        : "Price scan finished for " + job.registration + ". Manual checking is available.");
+    } finally {
+      priceReaderRunning.current = false;
+      setPriceReadingJobId("");
+      setPriceReadProgress("");
+    }
+  };
+
+  const applyReadPrices = () => {
+    const read = activeJob?.priceRead;
+    if (!read || read.status !== "ready") return;
+    const values = createJob({
+      registration: activeJob.registration, wasPrice: read.wasPrice,
+      nowPrice: read.nowPrice, savePrice: read.savePrice,
+    }, activeJob.id);
+    if (!values.wasPrice || !values.nowPrice || !values.savePrice || values.warnings.length) return;
+    onJobChange({
+      wasPrice: values.wasPrice, nowPrice: values.nowPrice,
+      savePrice: values.savePrice, warnings: [],
+      priceRead: { ...read, reviewed: true },
+    });
+    setStatus("Confirmed sale prices saved for " + activeJob.registration + ".");
+  };
+
   const extractImages = async (sourceUrl = url) => {
     if (busy) return;
     if (!sourceUrl.trim()) {
@@ -475,16 +553,35 @@ function App() {
       if (!response.ok) throw new Error(data.error || "Image extraction failed.");
 
       const extractedImages = Array.isArray(data.images) ? data.images : [];
-      if (activeJob) onJobChange({ images: [...extractedImages, ...activeJob.images.filter(isUpload)], selectedImage: extractedImages[0] || "", transform: { ...DEFAULT_TRANSFORM } });
+      if (activeJob) {
+        // Image 1 contains the OLD SALE graphic; never use it as the
+        // vehicle photo under the new Halloween/Christmas PNG overlay.
+        // On Vansco the second image can also be a promo, so prefer the
+        // third as a clean starting point. The user can change it.
+        const keepSelected = activeJob.selectedImage &&
+          activeJob.selectedImage !== extractedImages[0] &&
+          (extractedImages.includes(activeJob.selectedImage) || isUpload(activeJob.selectedImage));
+        const exportImage = keepSelected ? activeJob.selectedImage :
+          (extractedImages[2] || extractedImages[1] || "");
+        onJobChange({
+          images: [...extractedImages, ...activeJob.images.filter(isUpload)],
+          selectedImage: exportImage, transform: { ...DEFAULT_TRANSFORM },
+        });
+      }
       else {
         setNormalImages(extractedImages);
         setNormalSelectedImage(extractedImages[0] || "");
         setNormalTransform({ ...DEFAULT_TRANSFORM });
         setManualPricesByImage({});
       }
+      if (activeJob && extractedImages.length) {
+        // Automatic best-effort scan. The selected clean photo is unchanged;
+        // suggested figures still require explicit human approval.
+        void runPriceRead(activeJob, [extractedImages[0]]);
+      }
       setStatus(
         extractedImages.length
-          ? `Found ${extractedImages.length} full-size images. Image 1 selected.`
+          ? `Found ${extractedImages.length} images. Image 1 used for old prices; select a clean photo for export.`
           : "No images found on that page."
       );
     } catch (extractError) {
@@ -522,6 +619,19 @@ function App() {
       setStatus("Existing photos kept. Upload Image and Load Images From URL remain available.");
     } finally { setIsExtracting(false); }
   };
+
+  useEffect(() => { extractImagesRef.current = extractImages; });
+
+  // In a sales campaign the operator can simply click a registration.
+  // Retrieve its URL images automatically once; never retry a broken URL in
+  // a render loop. Manual Load Images From URL remains available.
+  useEffect(() => {
+    if (!activeJob || !activeJob.vehicleUrl || activeJob.images.length ||
+      busy || priceReadingJobId || autoLoadedCampaignJobs.current.has(activeJob.id)) return;
+    autoLoadedCampaignJobs.current.add(activeJob.id);
+    void extractImagesRef.current?.(activeJob.vehicleUrl);
+    // Recheck when a previous vehicle finishes extracting/reading.
+  }, [activeJob, activeJobId, busy, priceReadingJobId]);
 
   const downloadZip = () => {
     const remoteImages = images.filter(reference => !isUpload(reference));
@@ -884,6 +994,10 @@ function App() {
         <SalesCampaignPanel campaign={campaign} updateCampaign={updateCampaign} storageError={storageError}
           templates={templates} activeJob={activeJob} onSelect={selectJob} onExit={exitCampaign}
           onLoadImages={() => extractImages(activeJob.vehicleUrl)} onDealerKitImages={loadDealerKitImages} onUploadImage={uploadCampaignImage}
+          onPriceScan={() => runPriceRead(activeJob, activeJob.images.slice(0, 1))}
+          onPriceSelected={() => runPriceRead(activeJob, [activeJob.selectedImage])}
+          onApplyReadPrices={applyReadPrices} priceReading={priceReadingJobId === activeJob?.id}
+          priceReadProgress={priceReadingJobId === activeJob?.id ? priceReadProgress : ""}
           onJobChange={onJobChange} busy={busy} onError={setError} onStatus={setStatus} />
         </div>
         <div className="panel editor-panel">

@@ -1,5 +1,13 @@
 export const DEFAULT_TRANSFORM = { x: 0, y: 0, scale: 1 };
 export const PRICE_FIELDS = ["wasPrice", "nowPrice", "savePrice"];
+// SAVE always starts 30px to the right of the master-price anchor. The WAS
+// and NOW controls retain their approved default positions.
+export const DEFAULT_PRICE_OFFSETS = Object.freeze({
+  wasPrice: Object.freeze({ x: 0, y: 0 }),
+  nowPrice: Object.freeze({ x: 0, y: 0 }),
+  savePrice: Object.freeze({ x: 30, y: 0 }),
+});
+export const SAVE_OFFSET_REVISION = 1;
 
 export function parsePrice(source) {
   if (source == null || String(source).trim() === "") return null;
@@ -45,7 +53,7 @@ export function createJob(row, id = crypto.randomUUID()) {
     vehicleUrl: String(row.vehicleUrl ?? "").trim(),
     wasPrice, nowPrice, savePrice, warnings,
     images: [], selectedImage: "", transform: { ...DEFAULT_TRANSFORM },
-    priceOffsets: Object.fromEntries(PRICE_FIELDS.map(field => [field, { x: 0, y: 0 }])),
+    priceOffsets: Object.fromEntries(PRICE_FIELDS.map(field => [field, { ...DEFAULT_PRICE_OFFSETS[field] }])),
     done: false,
   };
 }
@@ -64,7 +72,26 @@ export function nextUnfinished(jobs, currentId) {
 }
 
 export function newCampaign(name = "Vansco Sales Campaign") {
-  return { version: 1, id: crypto.randomUUID(), name, templateId: "", jobs: [], activeJobId: "", enabled: false };
+  return { version: 1, id: crypto.randomUUID(), name, templateId: "", jobs: [], activeJobId: "", enabled: false,
+    saveOffsetRevision: SAVE_OFFSET_REVISION };
+}
+
+// Upgrade previously imported vehicle queues without doubling an existing
+// manually calibrated +30px SAVE. Any intentional non-zero offsets are kept.
+export function migrateCampaignSaveOffsets(campaign) {
+  if (campaign.saveOffsetRevision >= SAVE_OFFSET_REVISION) return campaign;
+  return { ...campaign, saveOffsetRevision: SAVE_OFFSET_REVISION,
+    jobs: campaign.jobs.map(job => {
+      const old = job.priceOffsets?.savePrice;
+      if (!old || (old.x === 0 && old.y === 0)) {
+        return { ...job, priceOffsets: {
+          ...(job.priceOffsets || {}),
+          savePrice: { ...DEFAULT_PRICE_OFFSETS.savePrice },
+        } };
+      }
+      return job;
+    }),
+  };
 }
 
 const MANUAL_SALE_PRICE_FIELDS = Object.freeze({ wasPrice: "", nowPrice: "", savePrice: "" });

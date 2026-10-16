@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { createJob, formatPrice, newCampaign, PRICE_FIELDS } from "./campaignModel.js";
+import VehicleThumbnail from "./VehicleThumbnail.jsx";
+import { createJob, formatPrice, newCampaign, PRICE_FIELDS, DEFAULT_PRICE_OFFSETS } from "./campaignModel.js";
 import { parseSpreadsheet } from "./spreadsheetParser.js";
 import { PRICE_FONTS, pricePosition } from "./priceRenderer.js";
 import { PRICE_DEFAULTS_REVISION } from "./priceDefaults.js";
@@ -8,7 +9,7 @@ const label = field => field.replace("Price", "").toUpperCase();
 
 export function DynamicPriceControls({ job, onChange, disabled, }) {
   const [field, setField] = useState("nowPrice");
-  const offset = job.priceOffsets[field] || { x: 0, y: 0 };
+  const offset = job.priceOffsets[field] || DEFAULT_PRICE_OFFSETS[field];
   const move = (x, y = offset.y) => onChange({
     priceOffsets: { ...job.priceOffsets, [field]: { x, y } },
   });
@@ -24,7 +25,7 @@ export function DynamicPriceControls({ job, onChange, disabled, }) {
       <span>{offset.x}px</span>
       <button className="button subtle" aria-label={"Move " + label(field) + " right 2 pixels"} disabled={disabled} onClick={() => move(offset.x + 2)}>→</button>
     </div>
-    <button className="button ghost" disabled={disabled} onClick={() => move(0, 0)}>Reset Price Position</button>
+    <button className="button ghost" disabled={disabled} onClick={() => move(DEFAULT_PRICE_OFFSETS[field].x, DEFAULT_PRICE_OFFSETS[field].y)}>Reset Price Position</button>
     <details><summary>Advanced price position</summary>
       {["x", "y"].map(axis => <label key={axis} className="range-row">{axis.toUpperCase()} offset (px)
         <input type="number" value={offset[axis]} disabled={disabled}
@@ -70,6 +71,7 @@ function VehicleForm({ job, onSave, disabled }) {
 export default function SalesCampaignPanel({
   campaign, updateCampaign, storageError, templates, activeJob,
   onSelect, onExit, onLoadImages, onDealerKitImages, onUploadImage, onJobChange, busy, onError, onStatus,
+  onPriceScan, onPriceSelected, onApplyReadPrices, priceReading, priceReadProgress,
 }) {
   const [filter, setFilter] = useState("Remaining");
   const [search, setSearch] = useState("");
@@ -140,10 +142,59 @@ export default function SalesCampaignPanel({
           <input type="file" accept="image/jpeg,image/png,image/webp" aria-label="Upload Image" disabled={disabled}
             onChange={event => { onUploadImage(event.target.files?.[0]); event.target.value = ""; }} />
         </label>
+        <section className="sale-price-reader" aria-label="Read prices from previous sale artwork">
+          <strong>Reuse prices from existing advert</strong>
+          <p>The previous sale advert is always Image 1. Read only that picture for WAS, NOW and SAVE; select a clean vehicle photo for the new template after confirming the figures.</p>
+          <div className="campaign-actions">
+            <button className="button primary" type="button"
+              disabled={disabled || priceReading || !activeJob.images.length}
+              onClick={onPriceScan}>Read prices from Image 1</button>
+            <button className="button subtle" type="button"
+              disabled={disabled || priceReading || !activeJob.selectedImage}
+              onClick={onPriceSelected}>Read selected image</button>
+          </div>
+          {priceReading && <p role="status">Reading Image 1 locally... {priceReadProgress}</p>}
+          {activeJob.priceRead && !priceReading && <div className="price-read-result" role="status">
+            {activeJob.priceRead.status === "ready" && <strong>
+              Found WAS {formatPrice({ value: activeJob.priceRead.wasPrice })} ·
+              NOW {formatPrice({ value: activeJob.priceRead.nowPrice })} ·
+              SAVE {formatPrice({ value: activeJob.priceRead.savePrice })}
+            </strong>}
+            {activeJob.priceRead.status === "review" && <strong>
+              Price reading needs checking. Original values recognised:
+              WAS {formatPrice(activeJob.priceRead.wasPrice && { value: activeJob.priceRead.wasPrice })} ·
+              NOW {formatPrice(activeJob.priceRead.nowPrice && { value: activeJob.priceRead.nowPrice })} ·
+              SAVE {formatPrice(activeJob.priceRead.savePrice && { value: activeJob.priceRead.savePrice })}
+            </strong>}
+            {activeJob.priceRead.status === "not-found" && <strong>No reliable sale advert prices found.</strong>}
+            {activeJob.priceRead.sourceImage && <div className="price-read-source">
+              <span>Price reference image (not used for export):</span>
+              <VehicleThumbnail reference={activeJob.priceRead.sourceImage} alt="Previous sale advert used to read prices" />
+            </div>}
+            {activeJob.priceRead.inferredFields?.length > 0 && <p>
+              One or more amounts were calculated because a printed figure was unclear.
+              Please check the original picture before clicking Use Read Prices.
+            </p>}
+            {activeJob.priceRead.recognisedText && <details>
+              <summary>View text read from each price area</summary>
+              <pre style={{ whiteSpace: "pre-wrap", fontSize: 12, overflowWrap: "anywhere" }}>
+                {JSON.stringify(activeJob.priceRead.recognisedText, null, 2)}
+              </pre>
+            </details>}
+            {(activeJob.priceRead.warnings || []).map((warning, index) =>
+              <p className="campaign-warning" key={index}>{warning}</p>)}
+            {activeJob.priceRead.status === "ready" && <button
+              className="button primary" type="button" disabled={disabled}
+              onClick={onApplyReadPrices}>
+              {activeJob.priceRead.reviewed ? "Use Read Prices Again" : "Use Read Prices (confirm)"}
+            </button>}
+            {activeJob.priceRead.reviewed && <p>Prices confirmed. Select the clean vehicle photo before exporting.</p>}
+          </div>}
+        </section>
         <button className="button ghost" disabled={disabled} onClick={() => onJobChange({ done: !activeJob.done })}>
           Mark {activeJob.done ? "Not Done" : "Done"}
         </button>
-        <details><summary>Edit active vehicle</summary>
+        <details><summary>Edit active vehicle / correct WAS, NOW and SAVE manually</summary>
           <VehicleForm key={activeJob.id + "-" + [activeJob.registration, activeJob.location, activeJob.wasPrice?.value, activeJob.nowPrice?.value, activeJob.savePrice?.value, activeJob.vehicleUrl].join("|")} job={activeJob} disabled={disabled}
             onSave={parsed => onJobChange({
               registration: parsed.registration, location: parsed.location, vehicleUrl: parsed.vehicleUrl,
