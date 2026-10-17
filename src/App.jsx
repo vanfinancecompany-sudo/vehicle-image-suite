@@ -320,7 +320,7 @@ function App() {
   const [manualPricesByImage, setManualPricesByImage] = useState({});
   const [newTemplateName, setNewTemplateName] = useState("");
   const [newTemplateFile, setNewTemplateFile] = useState(null);
-  const [dragStart, setDragStart] = useState(null);
+  const dragStartRef = useRef(null);
   const [status, setStatus] = useState("Ready to extract full-size vehicle images.");
   const [error, setError] = useState("");
   const [isExtracting, setIsExtracting] = useState(false);
@@ -376,14 +376,14 @@ function App() {
     else setNormalTemplateId(id);
   };
   const selectJob = id => {
-    setDragStart(null);
+    dragStartRef.current = null;
     if (updateCampaign(current => ({ ...current, enabled: true, activeJobId: id }))) {
       setError("");
       setStatus("Campaign vehicle selected. Choose its photo and campaign overlay.");
     }
   };
   const exitCampaign = () => {
-    setDragStart(null);
+    dragStartRef.current = null;
     updateCampaign(current => ({ ...current, enabled: false }));
   };
   const selectedImageIndex = useMemo(
@@ -750,10 +750,11 @@ function App() {
   const handlePointerDown = (event) => {
     if (!selectedImage || !activeTemplate || busy) return;
     event.currentTarget.setPointerCapture(event.pointerId);
-    setDragStart({ point: getCanvasPoint(event), transform: imageTransform });
+    dragStartRef.current = { point: getCanvasPoint(event), transform: imageTransform };
   };
 
   const handlePointerMove = (event) => {
+    const dragStart = dragStartRef.current;
     if (!dragStart || !activeTemplate || busy) return;
     const point = getCanvasPoint(event);
     setImageTransform({
@@ -767,7 +768,7 @@ function App() {
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
-    setDragStart(null);
+    dragStartRef.current = null;
   };
 
   const handleWheel = (event) => {
