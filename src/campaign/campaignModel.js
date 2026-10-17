@@ -26,6 +26,17 @@ export function formatPrice(price) {
   }).format(price.value);
 }
 
+function validCampaignImageUrl(value) {
+  if (!value || typeof value !== "string") return "";
+  try {
+    const url = new URL(value.trim());
+    // Spreadsheet URLs are operator-provided; do not proxy local/non-HTTPS targets.
+    if (url.protocol !== "https:" || url.username || url.password || url.port) return "";
+    if (!["acdn.uk", "img.cdn.dragon2000.net", "www.vansco.co.uk", "vansco.co.uk"].includes(url.hostname.toLowerCase())) return "";
+    return url.href;
+  } catch { return ""; }
+}
+
 export function createJob(row, id = crypto.randomUUID()) {
   const wasPrice = parsePrice(row.wasPrice);
   const nowPrice = parsePrice(row.nowPrice);
@@ -38,6 +49,9 @@ export function createJob(row, id = crypto.randomUUID()) {
     };
   }
   const warnings = [];
+  const rawImageUrl = String(row.imageUrl ?? "").trim();
+  const sourceImageUrl = validCampaignImageUrl(rawImageUrl);
+  if (rawImageUrl && !sourceImageUrl) warnings.push("Spreadsheet image URL was not recognised. Load from Vansco or upload a photo.");
   const registration = String(row.registration || "").trim().toUpperCase();
   if (!registration) warnings.push("Registration is missing. Edit it before export.");
   for (const [label, price] of [["WAS", wasPrice], ["NOW", nowPrice], ["SAVE", savePrice]]) {
@@ -50,12 +64,47 @@ export function createJob(row, id = crypto.randomUUID()) {
   }
   return {
     id, registration, location: String(row.location ?? "").trim(),
-    vehicleUrl: String(row.vehicleUrl ?? "").trim(),
+    vehicleUrl: String(row.vehicleUrl ?? "").trim(), sourceImageUrl,
     wasPrice, nowPrice, savePrice, warnings,
-    images: [], selectedImage: "", transform: { ...DEFAULT_TRANSFORM },
+    // The supplied primary image is typically the OLD sale artwork for OCR.
+    // Never select it automatically for export beneath a new template.
+    images: sourceImageUrl ? [sourceImageUrl] : [], selectedImage: "", transform: { ...DEFAULT_TRANSFORM },
     priceOffsets: Object.fromEntries(PRICE_FIELDS.map(field => [field, { ...DEFAULT_PRICE_OFFSETS[field] }])),
     done: false,
   };
+}
+
+// Re-importing the same CSV enriches the current queue without duplicating
+// registrations, erasing completed artwork or resetting manual positioning.
+export function mergeCampaignJobs(existingJobs, incomingJobs) {
+  const jobs = [...existingJobs];
+  const byRegistration = new Map(jobs.map((job, i) => [job.registration.replace(/[\\s-]/g, "").toUpperCase(), i]));
+  let added = 0;
+  let updated = 0;
+  for (const incoming of incomingJobs) {
+    const key = incoming.registration.replace(/[\\s-]/g, "").toUpperCase();
+    const index = byRegistration.get(key);
+    if (index === undefined || !key) {
+      if (key) byRegistration.set(key, jobs.length);
+      jobs.push(incoming);
+      added += 1;
+      continue;
+    }
+    const existing = jobs[index];
+    jobs[index] = {
+      ...existing,
+      location: existing.location || incoming.location,
+      vehicleUrl: existing.vehicleUrl || incoming.vehicleUrl,
+      sourceImageUrl: existing.sourceImageUrl || incoming.sourceImageUrl,
+      images: [...new Set([...existing.images, ...incoming.images])],
+      wasPrice: existing.wasPrice || incoming.wasPrice,
+      nowPrice: existing.nowPrice || incoming.nowPrice,
+      savePrice: existing.savePrice || incoming.savePrice,
+      warnings: existing.warnings.length ? existing.warnings : incoming.warnings,
+    };
+    updated += 1;
+  }
+  return { jobs, added, updated };
 }
 
 export function campaignFilename(job) {
