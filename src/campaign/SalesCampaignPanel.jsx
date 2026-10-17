@@ -1,7 +1,7 @@
 import { useState } from "react";
 import VehicleThumbnail from "./VehicleThumbnail.jsx";
 import ManualOverrideControls from "./ManualOverrideControls.jsx";
-import { createJob, formatPrice, newCampaign, PRICE_FIELDS, DEFAULT_PRICE_OFFSETS } from "./campaignModel.js";
+import { createJob, formatPrice, newCampaign, mergeCampaignJobs, PRICE_FIELDS, DEFAULT_PRICE_OFFSETS } from "./campaignModel.js";
 import { parseSpreadsheet } from "./spreadsheetParser.js";
 import { PRICE_FONTS, pricePosition } from "./priceRenderer.js";
 import { PRICE_DEFAULTS_REVISION } from "./priceDefaults.js";
@@ -88,9 +88,15 @@ export default function SalesCampaignPanel({
     if (!file) return;
     setImporting(true);
     try {
-      const jobs = await parseSpreadsheet(file);
-      if (updateCampaign(current => ({ ...current, jobs: [...current.jobs, ...jobs] }))) {
-        onStatus("Added " + jobs.length + " spreadsheet vehicles. Select a registration to begin.");
+      const imported = await parseSpreadsheet(file);
+      let counts = { added: 0, updated: 0 };
+      if (updateCampaign(current => {
+        const merged = mergeCampaignJobs(current.jobs, imported);
+        counts = { added: merged.added, updated: merged.updated };
+        return { ...current, jobs: merged.jobs };
+      })) {
+        onStatus("Added " + counts.added + " new vehicles; refreshed " + counts.updated +
+          " existing registrations. Existing artwork and progress kept.");
       }
     } catch (error) { onError(error.message); }
     finally { setImporting(false); }
