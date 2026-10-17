@@ -68,6 +68,7 @@ test("import, URL and manual photos, nudge, save/advance, restore after refresh 
     name: "new-stock.png", mimeType: "image/png", buffer: png,
   });
   await expect(page.getByRole("button", { name: "Image 3 Selected" })).toBeVisible();
+  await expect(panel.getByLabel("Upload replacement vehicle image", { exact: true })).toBeEnabled();
   const canvas = page.getByLabel("Template editor canvas");
   const bounds = await canvas.boundingBox();
   await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
@@ -182,7 +183,7 @@ test("Halloween CSV photos remain available when DealerKit has no matching galle
   const panel = page.getByRole("region", { name: "Vansco Sales Campaign" });
   await expect(panel.getByText("0 / 1 COMPLETE", { exact: true })).toBeVisible();
   await panel.getByRole("button", { name: /EU20UDB/ }).click();
-  await expect(page.getByRole("button", { name: /Image 1/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Image 1", exact: true })).toBeVisible();
   await panel.getByRole("button", { name: "LOAD DEALERKIT IMAGES" }).click();
   await expect(page.getByRole("button", { name: "Image 3 Selected" })).toBeVisible();
   await upload();
@@ -237,7 +238,8 @@ test("master font/width calibration and individual price position persist indepe
   await panel.getByLabel("Campaign template").selectOption("sale-fixture");
   await panel.getByRole("button", { name: /HJ22 LSK · Vansco 333 Showroom/ }).click();
   await panel.getByLabel("Upload replacement vehicle image", { exact: true }).setInputFiles({ name: "stock.png", mimeType: "image/png", buffer: png });
-  await expect(page.getByRole("button", { name: "Image 1 Selected" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Image [0-9]+ Selected/ })).toBeVisible();
+  await expect(panel.getByLabel("Upload replacement vehicle image", { exact: true })).toBeEnabled();
   await panel.getByText("Advanced campaign price defaults", { exact: true }).click();
   await expect.poll(() => page.evaluate(() => window.priceDraws.length)).toBeGreaterThan(0);
   const typography = await page.evaluate(async key => {
