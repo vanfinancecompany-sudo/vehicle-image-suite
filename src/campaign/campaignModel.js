@@ -78,11 +78,11 @@ export function createJob(row, id = crypto.randomUUID()) {
 // registrations, erasing completed artwork or resetting manual positioning.
 export function mergeCampaignJobs(existingJobs, incomingJobs) {
   const jobs = [...existingJobs];
-  const byRegistration = new Map(jobs.map((job, i) => [job.registration.replace(/[\\s-]/g, "").toUpperCase(), i]));
+  const byRegistration = new Map(jobs.map((job, i) => [job.registration.replace(/[\s-]/g, "").toUpperCase(), i]));
   let added = 0;
   let updated = 0;
   for (const incoming of incomingJobs) {
-    const key = incoming.registration.replace(/[\\s-]/g, "").toUpperCase();
+    const key = incoming.registration.replace(/[\s-]/g, "").toUpperCase();
     const index = byRegistration.get(key);
     if (index === undefined || !key) {
       if (key) byRegistration.set(key, jobs.length);
