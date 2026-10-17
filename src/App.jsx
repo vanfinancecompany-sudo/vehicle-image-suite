@@ -580,8 +580,10 @@ function App() {
         setNormalTransform({ ...DEFAULT_TRANSFORM });
         setManualPricesByImage({});
       }
-      if (activeJob && gallery.length) {
-        // Price reading remains a proposal until the operator confirms it.
+      if (activeJob && gallery.length &&
+          (!activeJob.wasPrice || !activeJob.nowPrice || !activeJob.savePrice) &&
+          !activeJob.priceRead?.reviewed) {
+        // Only OCR missing prices. Never re-read/overwrite confirmed figures.
         void runPriceRead(activeJob, [gallery[0]]);
       }
       setStatus(
