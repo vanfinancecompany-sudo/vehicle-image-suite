@@ -622,18 +622,21 @@ function App() {
       const keepSelected = activeJob.selectedImage &&
         activeJob.selectedImage !== gallery[0] &&
         (gallery.includes(activeJob.selectedImage) || isUpload(activeJob.selectedImage));
-      const selectedImage = keepSelected ? activeJob.selectedImage : (gallery[2] || gallery[1] || "");
+      const selectedImage = keepSelected ? activeJob.selectedImage : (activeJob.sourceImageUrl
+        ? (gallery[2] || gallery[1] || "") : gallery[0]);
       if (onJobChange({
         images: [...gallery, ...activeJob.images.filter(isUpload)], selectedImage,
         transform: sameGallery || selectedImage === activeJob.selectedImage ? activeJob.transform : { ...DEFAULT_TRANSFORM },
       })) setStatus(data.images.length + " DealerKit images loaded for " + activeJob.registration + ".");
     } catch (error) {
-      if (activeJob.vehicleUrl) {
-        // A missing DealerKit match is not a missing Vansco photo. Try the
-        // supplied public vehicle page before presenting a manual fallback.
-        const fromVansco = await extractImages(activeJob.vehicleUrl);
-        if (fromVansco) return;
+      if (!activeJob.vehicleUrl) {
+        setError(error.message);
+        setStatus("DealerKit image lookup failed. Upload a clean image or add a Vansco vehicle URL.");
+        return;
       }
+      // A missing DealerKit match is not a missing Vansco photo.
+      const fromVansco = await extractImages(activeJob.vehicleUrl);
+      if (fromVansco) return;
       setError("DealerKit did not return an exact vehicle gallery. " +
         (activeJob.images.length
           ? "The spreadsheet photo is retained; the Vansco gallery could not be loaded."
