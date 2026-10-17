@@ -7,6 +7,7 @@ const aliases = {
   nowPrice: ["new sales price", "now", "now price", "sale price"],
   savePrice: ["discount", "save", "saving"],
   vehicleUrl: ["vehicle url", "url", "link", "page url"],
+  imageUrl: ["image url", "photo url", "image link", "primary image url"],
 };
 const normalize = value => String(value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 
