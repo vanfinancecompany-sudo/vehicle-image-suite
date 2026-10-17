@@ -70,6 +70,7 @@ test("import, URL and manual photos, nudge, save/advance, restore after refresh 
   await expect(page.getByRole("button", { name: "Image 3 Selected" })).toBeVisible();
   await expect(panel.getByLabel("Upload replacement vehicle image", { exact: true })).toBeEnabled();
   const canvas = page.getByLabel("Template editor canvas");
+  await canvas.scrollIntoViewIfNeeded();
   const bounds = await canvas.boundingBox();
   await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
   await page.mouse.down();
