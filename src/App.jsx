@@ -553,40 +553,51 @@ function App() {
       if (!response.ok) throw new Error(data.error || "Image extraction failed.");
 
       const extractedImages = Array.isArray(data.images) ? data.images : [];
+      // The CSV primary image is the OLD sale advert, even if the live page
+      // omits it. Keep it first so OCR reads the old prices, not a clean van.
+      const suppliedImage = activeJob?.sourceImageUrl || "";
+      const gallery = activeJob
+        ? [...new Set([suppliedImage, ...extractedImages].filter(Boolean))]
+        : extractedImages;
       if (activeJob) {
-        // Image 1 contains the OLD SALE graphic; never use it as the
-        // vehicle photo under the new Halloween/Christmas PNG overlay.
-        // On Vansco the second image can also be a promo, so prefer the
-        // third as a clean starting point. The user can change it.
+        const uploads = activeJob.images.filter(isUpload);
         const keepSelected = activeJob.selectedImage &&
-          activeJob.selectedImage !== extractedImages[0] &&
-          (extractedImages.includes(activeJob.selectedImage) || isUpload(activeJob.selectedImage));
+          activeJob.selectedImage !== gallery[0] &&
+          (gallery.includes(activeJob.selectedImage) || isUpload(activeJob.selectedImage));
+        // Avoid the first advert, and favour the third site image where the
+        // second is often another promotional picture.
+        const cleanPhotos = gallery.filter(image => image !== gallery[0]);
         const exportImage = keepSelected ? activeJob.selectedImage :
-          (extractedImages[2] || extractedImages[1] || "");
+          (cleanPhotos[1] || cleanPhotos[0] || uploads[0] || "");
         onJobChange({
-          images: [...extractedImages, ...activeJob.images.filter(isUpload)],
+          images: [...new Set([...gallery, ...uploads])],
           selectedImage: exportImage, transform: { ...DEFAULT_TRANSFORM },
         });
       }
       else {
-        setNormalImages(extractedImages);
-        setNormalSelectedImage(extractedImages[0] || "");
+        setNormalImages(gallery);
+        setNormalSelectedImage(gallery[0] || "");
         setNormalTransform({ ...DEFAULT_TRANSFORM });
         setManualPricesByImage({});
       }
-      if (activeJob && extractedImages.length) {
-        // Automatic best-effort scan. The selected clean photo is unchanged;
-        // suggested figures still require explicit human approval.
-        void runPriceRead(activeJob, [extractedImages[0]]);
+      if (activeJob && gallery.length) {
+        // Price reading remains a proposal until the operator confirms it.
+        void runPriceRead(activeJob, [gallery[0]]);
       }
       setStatus(
         extractedImages.length
-          ? `Found ${extractedImages.length} images. Image 1 used for old prices; select a clean photo for export.`
-          : "No images found on that page."
+          ? `Found ${extractedImages.length} Vansco images. Image 1 retained for old prices; choose a clean photo for export.`
+          : gallery.length
+            ? "Vansco gallery returned no extra photos. Spreadsheet image retained for price reading; upload a clean vehicle photo."
+            : "No images found on that Vansco page. Upload a clean vehicle photo."
       );
+      return extractedImages.length > 0;
     } catch (extractError) {
       setError(extractError.message || "Image extraction failed.");
-      setStatus("Extraction failed.");
+      setStatus(activeJob?.images.length
+        ? "Vansco page could not be loaded. Existing spreadsheet photo retained."
+        : "Vansco page extraction failed.");
+      return false;
     } finally {
       setIsExtracting(false);
     }
@@ -605,18 +616,30 @@ function App() {
       if (!data.ok || data.registration !== registration || !data.images?.length) {
         throw new Error("No exact DealerKit vehicle/image result. Use Upload Image or Load Images From URL.");
       }
-      const gallery = data.images.map(image => image.url);
+      const gallery = [...new Set([activeJob.sourceImageUrl, ...data.images.map(image => image.url)].filter(Boolean))];
       const oldGallery = activeJob.images.filter(image => !isUpload(image));
       const sameGallery = JSON.stringify(oldGallery) === JSON.stringify(gallery);
-      const selectedImage = gallery.includes(activeJob.selectedImage) || isUpload(activeJob.selectedImage)
-        ? activeJob.selectedImage : gallery[0];
+      const keepSelected = activeJob.selectedImage &&
+        activeJob.selectedImage !== gallery[0] &&
+        (gallery.includes(activeJob.selectedImage) || isUpload(activeJob.selectedImage));
+      const selectedImage = keepSelected ? activeJob.selectedImage : (gallery[2] || gallery[1] || "");
       if (onJobChange({
         images: [...gallery, ...activeJob.images.filter(isUpload)], selectedImage,
         transform: sameGallery || selectedImage === activeJob.selectedImage ? activeJob.transform : { ...DEFAULT_TRANSFORM },
-      })) setStatus(gallery.length + " DealerKit images loaded for " + activeJob.registration + ".");
+      })) setStatus(data.images.length + " DealerKit images loaded for " + activeJob.registration + ".");
     } catch (error) {
-      setError(error.message);
-      setStatus("Existing photos kept. Upload Image and Load Images From URL remain available.");
+      if (activeJob.vehicleUrl) {
+        // A missing DealerKit match is not a missing Vansco photo. Try the
+        // supplied public vehicle page before presenting a manual fallback.
+        const fromVansco = await extractImages(activeJob.vehicleUrl);
+        if (fromVansco) return;
+      }
+      setError("DealerKit did not return an exact vehicle gallery. " +
+        (activeJob.images.length
+          ? "The spreadsheet photo is retained; the Vansco gallery could not be loaded."
+          : "The Vansco page also returned no usable photos.") +
+        " You can upload a clean vehicle image.");
+      setStatus("DealerKit/Vansco image lookup unavailable for " + activeJob.registration + ".");
     } finally { setIsExtracting(false); }
   };
 
@@ -626,7 +649,7 @@ function App() {
   // Retrieve its URL images automatically once; never retry a broken URL in
   // a render loop. Manual Load Images From URL remains available.
   useEffect(() => {
-    if (!activeJob || !activeJob.vehicleUrl || activeJob.images.length ||
+    if (!activeJob || !activeJob.vehicleUrl || activeJob.images.length > 1 || activeJob.images.some(isUpload) ||
       busy || priceReadingJobId || autoLoadedCampaignJobs.current.has(activeJob.id)) return;
     autoLoadedCampaignJobs.current.add(activeJob.id);
     void extractImagesRef.current?.(activeJob.vehicleUrl);
