@@ -63,13 +63,14 @@ test("import, URL and manual photos, nudge, save/advance, restore after refresh 
   await panel.getByLabel("Campaign template").selectOption("sale-fixture");
   await panel.getByRole("button", { name: /HJ22 LSK · Vansco 333 Showroom/ }).click();
   await panel.getByRole("button", { name: "Load Images From URL" }).click();
-  await expect(page.getByRole("button", { name: "Image 2", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Image 2", exact: true }).click();
-  await panel.getByLabel("Upload Image", { exact: true }).setInputFiles({
+  await expect(page.getByRole("button", { name: "Image 2 Selected" })).toBeVisible();
+  await panel.getByLabel("Upload replacement vehicle image", { exact: true }).setInputFiles({
     name: "new-stock.png", mimeType: "image/png", buffer: png,
   });
   await expect(page.getByRole("button", { name: "Image 3 Selected" })).toBeVisible();
+  await expect(panel.getByLabel("Upload replacement vehicle image", { exact: true })).toBeEnabled();
   const canvas = page.getByLabel("Template editor canvas");
+  await canvas.scrollIntoViewIfNeeded();
   const bounds = await canvas.boundingBox();
   await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
   await page.mouse.down();
@@ -112,7 +113,7 @@ test("import, URL and manual photos, nudge, save/advance, restore after refresh 
   await form.getByRole("button", { name: "Add Vehicle", exact: true }).click();
   await panel.getByRole("button", { name: "Remaining", exact: true }).click();
   await panel.getByRole("button", { name: /XY26 NEW · New Forest/ }).click();
-  await panel.getByLabel("Upload Image", { exact: true }).setInputFiles({ name: "stock.png", mimeType: "image/png", buffer: png });
+  await panel.getByLabel("Upload replacement vehicle image", { exact: true }).setInputFiles({ name: "stock.png", mimeType: "image/png", buffer: png });
   const secondDownload = page.waitForEvent("download");
   await page.getByRole("button", { name: "SAVE PNG & MARK DONE", exact: true }).click();
   expect((await secondDownload).suggestedFilename()).toBe("XY26-NEW-New-Forest.png");
@@ -169,6 +170,32 @@ test("remove in either template list, cancel safely, persist defaults hidden, re
   expect(errors).toEqual([]);
 });
 
+test("Halloween CSV photos remain available when DealerKit has no matching gallery", async ({ page }) => {
+  const errors = await setup(page);
+  await page.route("**/api/dealerkit-images?*", route => route.fulfill({
+    status: 404, json: { error: "No exact public DealerKit stock match." },
+  }));
+  const photo = "https://acdn.uk/vansco/i/known-advert.jpeg";
+  const csv = ["Registration,Vehicle URL,Image URL", "EU20UDB,https://www.vansco.co.uk/a," + photo].join("\n");
+  const upload = async () => page.getByLabel("Upload Spreadsheet", { exact: true }).setInputFiles({
+    name: "remaining.csv", mimeType: "text/csv", buffer: Buffer.from(csv),
+  });
+  await upload();
+  const panel = page.getByRole("region", { name: "Vansco Sales Campaign" });
+  await expect(panel.getByText("0 / 1 COMPLETE", { exact: true })).toBeVisible();
+  await panel.getByRole("button", { name: /EU20UDB/ }).click();
+  await expect(page.getByRole("button", { name: "Image 1", exact: true })).toBeVisible();
+  await panel.getByRole("button", { name: "LOAD DEALERKIT IMAGES" }).click();
+  await expect(page.getByRole("button", { name: "Image 3 Selected" })).toBeVisible();
+  await upload();
+  const restored = await page.evaluate(key => JSON.parse(localStorage.getItem(key)), key);
+  expect(restored.jobs).toHaveLength(1);
+  expect(restored.jobs[0].images[0]).toBe(photo);
+  expect(restored.jobs[0].sourceImageUrl).toBe(photo);
+  expect(restored.jobs[0].selectedImage).not.toBe(photo);
+  expect(errors).toEqual([]);
+});
+
 test("explicit DealerKit loading uses exact registration, persists ordered gallery and keeps fallback photos", async ({ page }) => {
   const errors = await setup(page);
   let calls = 0;
@@ -199,7 +226,7 @@ test("explicit DealerKit loading uses exact registration, persists ordered galle
   await panel.getByRole("button", { name: "LOAD DEALERKIT IMAGES", exact: true }).click();
   await expect(page.getByText("No exact DealerKit match. Upload Image or enter a Vehicle URL.", { exact: true })).toBeVisible();
   expect((await page.evaluate(key => JSON.parse(localStorage.getItem(key)).jobs[0], key)).selectedImage).toBe(job.selectedImage);
-  await expect(panel.getByLabel("Upload Image", { exact: true })).toBeEnabled();
+  await expect(panel.getByLabel("Upload replacement vehicle image", { exact: true })).toBeEnabled();
   await expect(panel.getByRole("button", { name: "Load Images From URL" })).toBeVisible();
   expect(job.vehicleUrl).toBe("");
   expect(errors).toEqual([]);
@@ -211,8 +238,9 @@ test("master font/width calibration and individual price position persist indepe
   const panel = page.getByRole("region", { name: "Vansco Sales Campaign" });
   await panel.getByLabel("Campaign template").selectOption("sale-fixture");
   await panel.getByRole("button", { name: /HJ22 LSK · Vansco 333 Showroom/ }).click();
-  await panel.getByLabel("Upload Image", { exact: true }).setInputFiles({ name: "stock.png", mimeType: "image/png", buffer: png });
-  await expect(page.getByRole("button", { name: "Image 1 Selected" })).toBeVisible();
+  await panel.getByLabel("Upload replacement vehicle image", { exact: true }).setInputFiles({ name: "stock.png", mimeType: "image/png", buffer: png });
+  await expect(page.getByRole("button", { name: /Image [0-9]+ Selected/ })).toBeVisible();
+  await expect(panel.getByLabel("Upload replacement vehicle image", { exact: true })).toBeEnabled();
   await panel.getByText("Advanced campaign price defaults", { exact: true }).click();
   await expect.poll(() => page.evaluate(() => window.priceDraws.length)).toBeGreaterThan(0);
   const typography = await page.evaluate(async key => {

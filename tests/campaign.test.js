@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import * as XLSX from "xlsx";
-import { createJob, formatPrice, campaignFilename, nextUnfinished, newCampaign, isSaleTemplate, manualSalePriceJob } from "../src/campaign/campaignModel.js";
+import { createJob, mergeCampaignJobs, formatPrice, campaignFilename, nextUnfinished, newCampaign, isSaleTemplate, manualSalePriceJob } from "../src/campaign/campaignModel.js";
 import { parseRows, parseSpreadsheet } from "../src/campaign/spreadsheetParser.js";
 import { loadCampaign, saveCampaign, CAMPAIGN_KEY } from "../src/campaign/campaignStorage.js";
 import { drawPrices, ensurePriceFont, priceGeometry, DEFAULT_PRICE_LAYOUT } from "../src/campaign/priceRenderer.js";
@@ -26,6 +26,53 @@ test("aliases, trims, pence, calculated SAVE and mismatched supplied SAVE", () =
   assert.match(jobs[2].warnings.join(" "), /not a valid price/);
   assert.throws(() => parseRows([["Unrelated"]]), /Registration column/);
 });
+
+test("Vansco CSV primary photo is available before DealerKit, but not auto-selected for artwork", () => {
+  const photo = "https://acdn.uk/vansco/i/source-photo.jpeg";
+  const jobs = parseRows([
+    ["Registration", "Retail Price", "New Sales Price", "Discount", "Vehicle URL", "Image URL", "Vehicle"],
+    ["EU20UDB", "", "", "", "https://www.vansco.co.uk/ford-transit-example", photo, "Ford Transit"],
+    ["YM70LFN", "", "", "", "https://www.vansco.co.uk/ford-ranger-example", "", "Ford Ranger"],
+  ]);
+  assert.equal(jobs.length, 2);
+  assert.deepEqual(jobs[0].images, [photo]);
+  assert.equal(jobs[0].sourceImageUrl, photo);
+  assert.equal(jobs[0].selectedImage, "");
+  assert.deepEqual(jobs[1].images, []);
+  assert.equal(jobs[0].vehicleUrl, "https://www.vansco.co.uk/ford-transit-example");
+  assert.equal(createJob({ registration: "TEST", imageUrl: "http://localhost/internal" }).images.length, 0);
+  assert.equal(createJob({ registration: "TEST", imageUrl: "https://evil.example/other.jpg" }).images.length, 0);
+});
+
+test("reimport enriches matching registrations without duplicating finished work", () => {
+  const existing = createJob({ registration: "EU20UDB", vehicleUrl: "https://www.vansco.co.uk/van", wasPrice: 14495, nowPrice: 13995 });
+  existing.done = true;
+  existing.selectedImage = "upload:kept";
+  existing.images = ["upload:kept"];
+  existing.transform = { x: 30, y: 40, scale: 1.3 };
+  existing.priceOffsets.nowPrice.x = 17;
+  const incoming = parseRows([
+    ["Registration", "Vehicle URL", "Image URL"],
+    ["EU20UDB", "https://www.vansco.co.uk/van", "https://acdn.uk/vansco/i/first.jpeg"],
+    ["HN24EAE", "https://www.vansco.co.uk/van2", "https://acdn.uk/vansco/i/second.jpeg"],
+  ]);
+  const merged = mergeCampaignJobs([existing], incoming);
+  assert.equal(merged.added, 1);
+  assert.equal(merged.updated, 1);
+  assert.equal(merged.jobs.length, 2);
+  assert.equal(merged.jobs[0].done, true);
+  assert.equal(merged.jobs[0].selectedImage, "upload:kept");
+  assert.deepEqual(merged.jobs[0].transform, { x: 30, y: 40, scale: 1.3 });
+  assert.equal(merged.jobs[0].priceOffsets.nowPrice.x, 17);
+  assert.equal(merged.jobs[0].wasPrice.value, 14495);
+  assert.deepEqual(merged.jobs[0].images, ["upload:kept", "https://acdn.uk/vansco/i/first.jpeg"]);
+  const repeated = mergeCampaignJobs(merged.jobs, incoming);
+  assert.equal(repeated.added, 0);
+  assert.equal(repeated.updated, 2);
+  assert.equal(repeated.jobs[0].images.length, 2);
+  assert.equal(repeated.jobs.length, 2);
+});
+
 test("SAVE tolerance, zero SAVE and decimal rounding", () => {
   assert.equal(createJob({ registration: "A", wasPrice: "100", nowPrice: "99", savePrice: "0" }).warnings.length, 0);
   assert.match(createJob({ registration: "A", wasPrice: "100", nowPrice: "99", savePrice: "2.01" }).warnings.join(" "), /differs/);
