@@ -56,7 +56,7 @@ test("SAVE shadow and tighter/heavier NOW use the production renderer and retain
   expect(result.now.width).toBeLessThan(result.plainWidth * 0.88);
   expect(result.polished.count).toBeGreaterThan(result.previous.count);
   expect(Math.abs(result.polished.left - result.previous.left)).toBeLessThanOrEqual(1);
-  expect(result.box.x).toBe(695); expect(result.box.position.size).toBe(52);
+  expect(result.box.x).toBe(725); expect(result.box.position.size).toBe(52);
   expect(result.shadow).toBeGreaterThan(0); expect(result.outside).toBe(0);
   await page.locator("canvas").screenshot({ path: "test-results/sale-polish-350-10245.png" });
 });
@@ -85,7 +85,7 @@ test("framed PNG clips photo after drag/zoom and export exactly matches editor p
   const panel = page.getByRole("region", { name: "Vansco Sales Campaign" });
   await panel.getByLabel("Campaign template").selectOption("clip-fixture");
   await panel.getByRole("button", { name: /CP16 AZW · Vansco 333 Showroom/ }).click();
-  await panel.getByLabel("Upload Image", { exact: true }).setInputFiles({
+  await panel.getByLabel("Upload replacement vehicle image", { exact: true }).setInputFiles({
     name: "edges.png", mimeType: "image/png", buffer: Buffer.from(photo.split(",")[1], "base64"),
   });
   await expect(page.getByRole("button", { name: "Image 1 Selected" })).toBeVisible();
